@@ -20,12 +20,13 @@ require File.expand_path(File.join(File.dirname(__FILE__), "..", "..", "spec_hel
 
 describe Chef::Knife::NodeDelete do
   before(:each) do
+    Chef::Config[:node_name]  = "webmonkey.example.com"
     @knife = Chef::Knife::NodeDelete.new
     @knife.config = {
       :print_after => nil
     }
     @knife.name_args = [ "adam" ]
-    @knife.stub!(:json_pretty_print).and_return(true)
+    @knife.stub!(:output).and_return(true)
     @knife.stub!(:confirm).and_return(true)
     @node = Chef::Node.new() 
     @node.stub!(:destroy).and_return(true)
@@ -49,7 +50,7 @@ describe Chef::Knife::NodeDelete do
     end
 
     it "should not print the node" do
-      @knife.should_not_receive(:json_pretty_print).with("poop")
+      @knife.should_not_receive(:output).with("poop")
       @knife.run
     end
 
@@ -57,7 +58,7 @@ describe Chef::Knife::NodeDelete do
       it "should pretty print the node, formatted for display" do
         @knife.config[:print_after] = true
         @knife.should_receive(:format_for_display).with(@node).and_return("poop")
-        @knife.should_receive(:json_pretty_print).with("poop")
+        @knife.should_receive(:output).with("poop")
         @knife.run
       end
     end

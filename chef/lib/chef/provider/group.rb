@@ -27,8 +27,8 @@ class Chef
       include Chef::Mixin::Command
       attr_accessor :group_exists
       
-      def initialize(node, new_resource, collection=nil, definitions=nil, cookbook_loader=nil)
-        super(node, new_resource, collection, definitions, cookbook_loader)
+      def initialize(new_resource, run_context)
+        super
         @group_exists = true
       end
       
@@ -45,7 +45,7 @@ class Chef
         end
         
         if group_info
-          @new_resource.gid(group_info.gid)
+          @new_resource.gid(group_info.gid) unless @new_resource.gid
           @current_resource.gid(group_info.gid)
           @current_resource.members(group_info.mem)
         end
@@ -78,12 +78,12 @@ class Chef
         when false
           create_group
           Chef::Log.info("Created #{@new_resource}")
-          @new_resource.updated = true
+          @new_resource.updated_by_last_action(true)
         else 
           if compare_group
             manage_group
             Chef::Log.info("Altered #{@new_resource}")
-            @new_resource.updated = true
+            @new_resource.updated_by_last_action(true)
           end
         end
       end
@@ -91,7 +91,7 @@ class Chef
       def action_remove
         if @group_exists
           remove_group
-          @new_resource.updated = true
+          @new_resource.updated_by_last_action(true)
           Chef::Log.info("Removed #{@new_resource}")
         end
       end
@@ -99,7 +99,7 @@ class Chef
       def action_manage
         if @group_exists && compare_group
           manage_group 
-          @new_resource.updated = true
+          @new_resource.updated_by_last_action(true)
           Chef::Log.info("Managed #{@new_resource}")
         end
       end
@@ -108,13 +108,26 @@ class Chef
         if @group_exists 
           if compare_group
             manage_group
-            @new_resource.updated = true
+            @new_resource.updated_by_last_action(true)
             Chef::Log.info("Modified #{@new_resource}")
           end
         else
           raise Chef::Exceptions::Group, "Cannot modify #{@new_resource} - group does not exist!"
         end
       end
+      
+      def create_group
+        raise NotImplementedError, "subclasses of Chef::Provider::Group should define #create_group"
+      end
+
+      def manage_group
+        raise NotImplementedError, "subclasses of Chef::Provider::Group should define #manage_group"
+      end
+
+      def remove_group
+        raise NotImplementedError, "subclasses of Chef::Provider::Group should define #remove_group"
+      end
+
     end
   end
 end

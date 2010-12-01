@@ -1,6 +1,8 @@
-#
+#--
 # Author:: Adam Jacob (<adam@opscode.com>)
-# Copyright:: Copyright (c) 2008 Opscode, Inc.
+# Author:: Christopher Walters (<cw@opscode.com>)
+# Author:: Tim Hinderliter (<tim@opscode.com>)
+# Copyright:: Copyright (c) 2008, 2010 Opscode, Inc.
 # License:: Apache License, Version 2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,97 +24,69 @@ require 'chef/resource_collection'
 require 'chef/platform'
 
 class Chef
+  # == Chef::Runner
+  # This class is responsible for executing the steps in a Chef run.
   class Runner
     
+    attr_reader :run_context
+
+    attr_reader :delayed_actions
+
     include Chef::Mixin::ParamsValidate
-    
-    def initialize(node, collection, definitions={}, cookbook_loader=nil)
-      validate(
-        {
-          :node => node,
-          :collection => collection,
-        },
-        {
-          :node => {
-            :kind_of => Chef::Node,
-          },
-          :collection => {
-            :kind_of => Chef::ResourceCollection,
-          },
-        }
-      )
-      @node = node
-      @collection = collection
-      @definitions = definitions
-      @cookbook_loader = cookbook_loader
+
+    def initialize(run_context)
+      @run_context      = run_context
+      @delayed_actions  = []
     end
     
     def build_provider(resource)
-      provider_klass = Chef::Platform.find_provider_for_node(@node, resource)
-      Chef::Log.debug("#{resource} using #{provider_klass.to_s}")
-      provider = provider_klass.new(@node, resource, @collection, @definitions, @cookbook_loader)
+      provider_class = Chef::Platform.find_provider_for_node(run_context.node, resource)
+      Chef::Log.debug("#{resource} using #{provider_class.to_s}")
+      provider = provider_class.new(resource, run_context)
       provider.load_current_resource
       provider
     end
+    
+    # Determine the appropriate provider for the given resource, then
+    # execute it.
+    def run_action(resource, action)
+      resource.run_action(action)
 
-    def run_action(resource, ra)
-      provider = build_provider(resource)
-      provider.send("action_#{ra}")
+      # Execute any immediate and queue up any delayed notifications
+      # associated with the resource, but only if it was updated *this time*
+      # we ran an action on it.
+      if resource.updated_by_last_action?
+        resource.immediate_notifications.each do |notification|
+          Chef::Log.info("#{resource} sending #{notification.action} action to #{notification.resource} (immediate)")
+          run_action(notification.resource, notification.action)
+        end
 
-      if resource.updated
-        resource.actions.each_key do |action|
-          if resource.actions[action].has_key?(:immediate)
-            resource.actions[action][:immediate].each do |r|
-              Chef::Log.info("#{resource} sending #{action} action to #{r} (immediate)")
-              run_action(r, action)
-            end
-          end
-          if resource.actions[action].has_key?(:delayed)
-            resource.actions[action][:delayed].each do |r|
-              @delayed_actions[r] = Hash.new unless @delayed_actions.has_key?(r)
-              unless @delayed_actions[r].has_key?(action)
-                @ordered_delayed_actions << [r, action]
-                @delayed_actions[r][action] = Array.new
-              end
-              @delayed_actions[r][action] << lambda {
-                Chef::Log.info("#{resource} sending #{action} action to #{r} (delayed)")
-              } 
-            end
+        resource.delayed_notifications.each do |notification|
+          if delayed_actions.any? { |existing_notification| existing_notification.duplicates?(notification) }
+            Chef::Log.info( "#{resource} not queuing delayed action #{notification.action} on #{notification.resource}"\
+                            " (delayed), as it's already been queued")
+          else
+            delayed_actions << notification
           end
         end
       end
     end
-
+    
+    # Iterates over the +resource_collection+ in the +run_context+ calling
+    # +run_action+ for each resource in turn.
     def converge
+      # Resolve all lazy/forward references in notifications
+      run_context.resource_collection.each do |resource|
+        resource.resolve_notification_references
+      end
 
-      @delayed_actions = Hash.new
-      @ordered_delayed_actions = []
-      
-      @collection.execute_each_resource do |resource|
+      # Execute each resource.
+      run_context.resource_collection.execute_each_resource do |resource|
         begin
-          Chef::Log.debug("Processing #{resource}")
+          Chef::Log.debug("Processing #{resource} on #{run_context.node.name}")
           
-          # Check if this resource has an only_if block - if it does, skip it.
-          if resource.only_if
-            unless Chef::Mixin::Command.only_if(resource.only_if, resource.only_if_args)
-              Chef::Log.debug("Skipping #{resource} due to only_if")
-              next
-            end
-          end
-          
-          # Check if this resource has a not_if block - if it does, skip it.
-          if resource.not_if
-            unless Chef::Mixin::Command.not_if(resource.not_if, resource.not_if_args)
-              Chef::Log.debug("Skipping #{resource} due to not_if")
-              next
-            end
-          end
-          
-          # Walk the actions for this resource, building the provider and running each.
-          action_list = resource.action.kind_of?(Array) ? resource.action : [ resource.action ]
-          action_list.each do |ra|
-            run_action(resource, ra)
-          end
+          # Execute each of this resource's actions.
+          Array(resource.action).each {|action| run_action(resource, action)}
         rescue => e
           Chef::Log.error("#{resource} (#{resource.source_line}) had an error:\n#{e}\n#{e.backtrace.join("\n")}")
           raise e unless resource.ignore_failure
@@ -120,10 +94,11 @@ class Chef
       end
       
       # Run all our :delayed actions
-      @ordered_delayed_actions.each do |resource, action| 
-        log_array = @delayed_actions[resource][action]
-        log_array.each { |l| l.call } # Call each log message
-        run_action(resource, action)
+      delayed_actions.each do |notification|
+        Chef::Log.info( "#{notification.notifying_resource} sending #{notification.action}"\
+                        " action to #{notification.resource} (delayed)")
+        # Struct of resource/action to call
+        run_action(notification.resource, notification.action)
       end
 
       true

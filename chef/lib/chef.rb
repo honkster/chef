@@ -16,34 +16,24 @@
 # limitations under the License.
 #
 
-$:.unshift(File.dirname(__FILE__)) unless
-  $:.include?(File.dirname(__FILE__)) || $:.include?(File.expand_path(File.dirname(__FILE__)))
+require 'chef/version'
 
-require 'rubygems'
 require 'extlib'
 require 'chef/exceptions'
 require 'chef/log'
 require 'chef/config'
-Dir[File.join(File.dirname(__FILE__), 'chef/mixin/**/*.rb')].sort.each { |lib| require lib }
+require 'chef/providers'
+require 'chef/resources'
+require 'chef/shell_out'
 
-class Chef
-  VERSION = "0.8.11"
-end
+require 'chef/daemon'
+require 'chef/webui_user'
+require 'chef/openid_registration'
 
-# Adds a Dir.glob to Ruby 1.8.5, for compat
-if RUBY_VERSION < "1.8.6" 
-  class Dir 
-    class << self 
-      alias_method :glob_, :glob 
-      def glob(pattern, flags=0)
-        raise ArgumentError unless (
-          !pattern.nil? and (
-            pattern.is_a? Array and !pattern.empty?
-          ) or pattern.is_a? String
-        )
-        [pattern].flatten.inject([]) { |r, p| r + glob_(p, flags) }
-      end
-      alias_method :[], :glob 
-    end 
-  end 
-end 
+require 'chef/run_status'
+require 'chef/handler'
+require 'chef/handler/json_file'
+
+require 'chef/monkey_patches/tempfile'
+require 'chef/monkey_patches/dir'
+require 'chef/monkey_patches/string'

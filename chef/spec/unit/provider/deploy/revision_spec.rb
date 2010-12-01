@@ -25,7 +25,8 @@ describe Chef::Provider::Deploy::Revision do
     @resource = Chef::Resource::Deploy.new("/my/deploy/dir")
     @resource.revision("8a3195bf3efa246f743c5dfa83683201880f935c")
     @node = Chef::Node.new
-    @provider = Chef::Provider::Deploy::Revision.new(@node, @resource)
+    @run_context = Chef::RunContext.new(@node, {})
+    @provider = Chef::Provider::Deploy::Revision.new(@resource, @run_context)
     @provider.load_current_resource
     @runner = mock("runnah", :null_object => true)
     Chef::Runner.stub!(:new).and_return(@runner)
@@ -87,4 +88,13 @@ describe Chef::Provider::Deploy::Revision do
     @provider.all_releases.should == %w{second third fourth fifth latest}
   end
   
+  it "regenerates the file cache if it's not available" do
+    oldest = "/my/deploy/dir/releases/oldest"
+    latest = "/my/deploy/dir/releases/latest"
+    Dir.should_receive(:glob).with("/my/deploy/dir/releases/*").and_return([latest, oldest])
+    ::File.should_receive(:ctime).with(oldest).and_return(Time.now - 10)
+    ::File.should_receive(:ctime).with(latest).and_return(Time.now - 1)
+    @provider.all_releases.should == [oldest, latest]
+  end
+
 end

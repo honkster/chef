@@ -23,7 +23,7 @@ class Chef
   class Knife
     class CookbookList < Knife
 
-      banner "Sub-Command: cookbook list (options)"
+      banner "knife cookbook list (options)"
 
       option :with_uri,
         :short => "-w",
@@ -31,7 +31,7 @@ class Chef
         :description => "Show corresponding URIs"
 
       def run 
-        json_pretty_print(format_list_for_display(rest.get_rest('cookbooks')))
+        output(format_list_for_display(rest.get_rest('cookbooks')))
       end
     end
   end

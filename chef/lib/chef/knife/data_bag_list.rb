@@ -23,15 +23,16 @@ class Chef
   class Knife
     class DataBagList < Knife
 
-      banner "Sub-Command: data bag list (options)"
+      banner "knife data bag list (options)"
+      category "data bag"
 
       option :with_uri,
         :short => "-w",
         :long => "--with-uri",
         :description => "Show corresponding URIs"
 
-      def run 
-        json_pretty_print(format_list_for_display(Chef::DataBag.list))
+      def run
+        output(format_list_for_display(Chef::DataBag.list))
       end
     end
   end

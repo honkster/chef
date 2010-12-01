@@ -18,10 +18,11 @@
 
 require 'chef' / 'data_bag'
 
-class ChefServerWebui::Databags < ChefServerWebui::Application
+class Databags < Application
   
   provides :html, :json
-  before :login_required 
+  before :login_required
+  before :require_admin
   
   def new
     @databag = Chef::DataBag.new
@@ -33,7 +34,7 @@ class ChefServerWebui::Databags < ChefServerWebui::Application
       @databag = Chef::DataBag.new
       @databag.name params[:name]
       @databag.create
-      redirect(slice_url(:databags), :message => { :notice => "Created Databag #{@databag.name}" })
+      redirect(url(:databags), :message => { :notice => "Created Databag #{@databag.name}" })
     rescue => e
       Chef::Log.error("#{e}\n#{e.backtrace.join("\n")}")
       @_message = { :error => "Could not create databag" } 
@@ -71,7 +72,7 @@ class ChefServerWebui::Databags < ChefServerWebui::Application
     begin
       r = Chef::REST.new(Chef::Config[:chef_server_url])
       r.delete_rest("data/#{params[:id]}")
-      redirect(absolute_slice_url(:databags), {:message => { :notice => "Data bag #{params[:id]} deleted successfully" }, :permanent => true})
+      redirect(absolute_url(:databags), {:message => { :notice => "Data bag #{params[:id]} deleted successfully" }, :permanent => true})
     rescue => e
       Chef::Log.error("#{e}\n#{e.backtrace.join("\n")}")
       @databags = Chef::DataBag.list

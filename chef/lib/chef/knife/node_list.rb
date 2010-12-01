@@ -24,15 +24,15 @@ class Chef
   class Knife
     class NodeList < Knife
 
-      banner "Sub-Command: node list (options)"
+      banner "knife node list (options)"
 
       option :with_uri,
         :short => "-w",
         :long => "--with-uri",
         :description => "Show corresponding URIs"
 
-      def run 
-        json_pretty_print(format_list_for_display(Chef::Node.list))
+      def run
+        output(format_list_for_display(Chef::Node.list))
       end
     end
   end

@@ -22,7 +22,8 @@ require 'chef/config'
 require 'chef/mixin/params_validate'
 require 'chef/mixin/from_file'
 require 'chef/couchdb'
-require 'chef/data_bag_item'
+require 'chef/index_queue'
+require 'chef/data_bag'
 require 'extlib'
 require 'json'
 
@@ -83,9 +84,9 @@ class Chef
     end
 
     def raw_data=(new_data)
-      raise ArgumentError, "Data Bag Items must contain a Hash or Mash!" unless new_data.kind_of?(Hash) || new_data.kind_of?(Mash)
-      raise ArgumentError, "Data Bag Items must have an id key in the hash! #{new_data.inspect}" unless new_data.has_key?("id")
-      raise ArgumentError, "Data Bag Item id does not match alphanumeric/-/_!" unless new_data["id"] =~ /^[\-[:alnum:]_]+$/
+      raise Exceptions::ValidationFailed, "Data Bag Items must contain a Hash or Mash!" unless new_data.kind_of?(Hash) || new_data.kind_of?(Mash)
+      raise Exceptions::ValidationFailed, "Data Bag Items must have an id key in the hash! #{new_data.inspect}" unless new_data.has_key?("id")
+      raise Exceptions::ValidationFailed, "Data Bag Item id does not match alphanumeric/-/_!" unless new_data["id"] =~ /^[\-[:alnum:]_]+$/
       @raw_data = new_data
     end
 
@@ -102,8 +103,8 @@ class Chef
     end
 
     def object_name
-      raise ArgumentError, "You must have an 'id' or :id key in the raw data" unless raw_data.has_key?('id')
-      raise ArgumentError, "You must have declared what bag this item belongs to!" unless data_bag
+      raise Exceptions::ValidationFailed, "You must have an 'id' or :id key in the raw data" unless raw_data.has_key?('id')
+      raise Exceptions::ValidationFailed, "You must have declared what bag this item belongs to!" unless data_bag
       
       id = raw_data['id']
       "data_bag_item_#{data_bag}_#{id}"
@@ -210,7 +211,15 @@ class Chef
     
     # As a string
     def to_s
-      "data_bag_item[#{@name}]"
+      "data_bag_item[#{id}]"
+    end
+
+    def pretty_print(pretty_printer)
+      pretty_printer.pp({"data_bag_item('#{data_bag}', '#{id}')" => self.to_hash})
+    end
+
+    def id
+      @raw_data['id']
     end
 
   end

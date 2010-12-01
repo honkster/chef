@@ -188,16 +188,17 @@ describe Chef::Node::Attribute do
                           "os_version"=>"9.7.0",
                           "hostname"=>"latte",
                           "macaddress"=>"00:23:6c:7f:67:6c",
-                          "music" => { "jimmy_eat_world" => "nice" }
+                          "music" => { "jimmy_eat_world" => "nice", "apophis" => false }
     }
-  
     @default_hash = {
       "domain" => "opscode.com",
       "hot" => { "day" => "saturday" },
       "music" => { 
         "jimmy_eat_world" => "is fun!",
         "mastodon" => "rocks",
-        "mars_volta" => "is loud and nutty"
+        "mars_volta" => "is loud and nutty",
+        "deeper" => { "gates_of_ishtar" => nil },
+        "this" => {"apparatus" => {"must" => "be unearthed"}}
       }
     }
     @override_hash = {
@@ -208,7 +209,8 @@ describe Chef::Node::Attribute do
         "mars_volta" => "cicatriz"
       }
     }
-    @attributes = Chef::Node::Attribute.new(@attribute_hash, @default_hash, @override_hash)
+    @automatic_hash = {"week" => "friday"}
+    @attributes = Chef::Node::Attribute.new(@attribute_hash, @default_hash, @override_hash, @automatic_hash)
   end
 
   describe "initialize" do
@@ -216,24 +218,21 @@ describe Chef::Node::Attribute do
       @attributes.should be_a_kind_of(Chef::Node::Attribute)
     end
 
-    it "should take an Attribute, Default and Override hash" do
-      lambda { Chef::Node::Attribute.new({}, {}, {}) }.should_not raise_error
+    it "should take an Automatioc, Normal, Default and Override hash" do
+      lambda { Chef::Node::Attribute.new({}, {}, {}, {}) }.should_not raise_error
     end
 
-    [ :attribute, :default, :override ].each do |accessor|
+    [ :normal, :default, :override, :automatic ].each do |accessor|
       it "should set #{accessor}" do
-        na = Chef::Node::Attribute.new({ :attribute => true }, { :default => true }, { :override => true })
+        na = Chef::Node::Attribute.new({ :normal => true }, { :default => true }, { :override => true }, { :automatic => true })
         na.send(accessor).should == { accessor => true } 
       end
     end
 
-    it "should set the state to an empty array" do
-      @attributes.state.should == []
-    end
-
     it "should allow you to set the initial state" do
-      na = Chef::Node::Attribute.new({}, {}, {}, [ "first", "second", "third" ])
-      na.state.should == [ "first", "second", "third" ]
+      attrs = {"first" => {"second" => {"third" => {"jackpot" => "jackpot!"}}}}
+      na = Chef::Node::Attribute.new(attrs, {}, {}, {}, [ "first", "second", "third" ])
+      na.should have_key("jackpot")
     end
 
     it "should be enumerable" do
@@ -312,33 +311,39 @@ describe Chef::Node::Attribute do
 
     it "should set the value for a second level key" do
       to_check = {}
-      @attributes.state = [ "one" ]
+      @attributes[ "one" ]
       @attributes.set_value(to_check, "two", "some value")
       to_check["one"]["two"].should == "some value"
     end
 
     it "should set the value for a very deep key" do
       to_check = {}
-      @attributes.state = [ "one", "two", "three", "four", "five" ]
-      @attributes.set_value(to_check, "six", "some value")
+      attributes = Chef::Node::Attribute.new({}, {}, {}, {}, %w{one two three four five})
+      attributes.set_value(to_check, "six", "some value")
       to_check["one"]["two"]["three"]["four"]["five"]["six"].should == "some value"
     end
   end
 
   describe "[]=" do
+    it "should let you set an attribute value when another hash has an intermediate value" do
+      @attributes.normal["the_ghost"] = { "exterminate" => "the future" }
+      @attributes.set_type = :default
+      @attributes.auto_vivifiy_on_read = true
+      lambda { @attributes["the_ghost"]["exterminate"]["tomorrow"] = false }.should_not raise_error(NoMethodError)
+    end
+
     it "should set the attribute value" do
       @attributes["longboard"] = "surfing"
       @attributes["longboard"].should == "surfing"
       @attributes.attribute["longboard"].should == "surfing"
-      @attributes.override["longboard"].should == "surfing"
     end
 
     it "should set deeply nested attribute value when auto_vivifiy_on_read is true" do
+      @attributes.set_type = :normal
       @attributes.auto_vivifiy_on_read = true
-      @attributes["longboard"]["hunters"]["comics"] = "surfing"
-      @attributes["longboard"]["hunters"]["comics"].should == "surfing"
-      @attributes.attribute["longboard"]["hunters"]["comics"].should == "surfing"
-      @attributes.override["longboard"]["hunters"]["comics"].should == "surfing"
+      @attributes["deftones"]["hunters"]["nap"] = "surfing"
+      @attributes.reset
+      @attributes.normal["deftones"]["hunters"]["nap"].should == "surfing"
     end
 
     it "should die if you try and do nested attributes that do not exist without read vivification" do
@@ -355,24 +360,6 @@ describe Chef::Node::Attribute do
       @attributes.set_unless_value_present = true
       @attributes["hostname"] = "bar"
       @attributes["hostname"].should == "latte"
-    end
-
-    it "should optionally skip setting the value if a default already exists" do
-      @attributes.set_unless_value_present = true
-      @attributes["music"]["mastodon"] = "slays it"
-      @attributes["music"]["mastodon"].should == "rocks"
-    end
-
-    it "should optionally skip setting the value if an attibute already exists" do
-      @attributes.set_unless_value_present = true
-      @attributes["network"]["default_interface"] = "wiz1"
-      @attributes["network"]["default_interface"].should == "en1"
-    end
-
-    it "should optionally skip setting the value if an override already exists" do
-      @attributes.set_unless_value_present = true
-      @attributes["fire"] = "secret life"
-      @attributes["fire"].should == "still burn"
     end
 
     it "should write to an attribute that has been read before properly" do
@@ -393,12 +380,14 @@ describe Chef::Node::Attribute do
 
     it "should get a value based on the state of the object" do
       @attributes.auto_vivifiy_on_read = true
+      @attributes.set_type = :normal
       @attributes[:foo][:bar][:baz] = "snack"
       @attributes.get_value(@attribute_hash, :baz).should == "snack"
     end
 
     it "should return nil based on the state of the object if the key does not exist" do
       @attributes.auto_vivifiy_on_read = true
+      @attributes.set_type = :normal
       @attributes[:foo][:bar][:baz] = "snack"
       @attributes.get_value(@attribute_hash, :baznatch).should == nil
     end
@@ -425,10 +414,31 @@ describe Chef::Node::Attribute do
       @attributes.has_key?("ninja").should == false
     end
 
-    it "should be looking at the current position of the object" do
+    it "should return false if an attribute does not exist using dot notation" do
+      @attributes.has_key?("does_not_exist_at_all").should == false
+    end
+
+    it "should return true if an attribute exists but is set to nil using dot notation" do
+      @attributes.music.deeper.has_key?("gates_of_ishtar").should == true
+    end
+
+    it "should return true if an attribute exists but is set to false" do
+      @attributes["music"]
+      @attributes.has_key?("apophis").should == true
+    end
+    
+    it "should find keys at the current nesting level" do
       @attributes["music"]
       @attributes.has_key?("mastodon").should == true 
       @attributes.has_key?("whitesnake").should == false
+    end
+
+    it "does not find keys above the current nesting level" do
+      @attributes["music"]["this"]["apparatus"].should_not have_key("this")
+    end
+
+    it "does not find keys below the current nesting level" do
+      @attributes["music"]["this"].should_not have_key("must")
     end
 
     [:include?, :key?, :member?].each do |method|
@@ -474,13 +484,6 @@ describe Chef::Node::Attribute do
       @attributes.reset
       @attributes.music.mastodon.should == [ "dream", "still", "shining" ]
     end
-
-    it "should honor auto-vivifiy on read" do
-      @attributes.auto_vivifiy_on_read = true
-      @attributes.rock.and.roll = "boom boom yeah"
-      @attributes.reset
-      @attributes.rock.and.roll.should == "boom boom yeah"
-    end
   end
 
   describe "keys" do
@@ -498,7 +501,8 @@ describe Chef::Node::Attribute do
         {
           "one" =>  { "six" => "seven" },
           "snack" => "cookies"
-        }
+        },
+        {}
       )
     end
 
@@ -545,7 +549,8 @@ describe Chef::Node::Attribute do
         {
           "one" => "six",
           "snack" => "cookies"
-        }
+        },
+        {}
       )
     end
 
@@ -582,7 +587,8 @@ describe Chef::Node::Attribute do
         {
           "one" => "six",
           "snack" => "cookies"
-        }
+        },
+        {}
       )
     end
 
@@ -617,7 +623,8 @@ describe Chef::Node::Attribute do
         {
           "one" => "six",
           "snack" => "cookies"
-        }
+        },
+        {}
       )
     end
 
@@ -652,7 +659,8 @@ describe Chef::Node::Attribute do
         {
           "one" => "six",
           "snack" => "cookies"
-        }
+        },
+        {}
       )
     end
 
@@ -695,9 +703,10 @@ describe Chef::Node::Attribute do
         {
           "one" => "six",
           "snack" => "cookies"
-        }
+        },
+        {}
       )
-      @empty = Chef::Node::Attribute.new({}, {}, {})
+      @empty = Chef::Node::Attribute.new({}, {}, {}, {})
     end
 
     it "should respond to empty?" do
@@ -728,7 +737,8 @@ describe Chef::Node::Attribute do
         {
           "one" => "six",
           "snack" => "cookies"
-        }
+        },
+        {}
       )
     end
 
@@ -784,7 +794,8 @@ describe Chef::Node::Attribute do
         {
           "one" => "six",
           "snack" => "cookies"
-        }
+        },
+        {}
       )
     end
 
@@ -819,7 +830,8 @@ describe Chef::Node::Attribute do
         {
           "one" => "six",
           "snack" => "cookies"
-        }
+        },
+        {}
       )
     end
 
@@ -856,7 +868,8 @@ describe Chef::Node::Attribute do
         {
           "one" => "six",
           "snack" => "cookies"
-        }
+        },
+        {}
       )
     end
 
@@ -891,7 +904,8 @@ describe Chef::Node::Attribute do
         {
           "one" => "six",
           "snack" => "cookies"
-        }
+        },
+        {}
       )
     end
 
@@ -940,10 +954,11 @@ describe Chef::Node::Attribute do
         {
           "one" => "six",
           "snack" => "cookies"
-        }
+        },
+        {}
       )
 
-      @empty = Chef::Node::Attribute.new({},{},{})
+      @empty = Chef::Node::Attribute.new({},{},{},{})
     end
 
     it "should respond to size" do
@@ -978,6 +993,13 @@ describe Chef::Node::Attribute do
 
     it "should inform you that it is anything else" do
       @attributes.should_not be_a_kind_of(Chef::Node)
+    end
+  end
+
+  describe "inspect" do
+    it "should be readable" do
+      @attributes.inspect.should =~ /@automatic=\{\.\.\.\}/
+      @attributes.inspect.should =~ /@normal=\{\.\.\.\}/
     end
   end
 end

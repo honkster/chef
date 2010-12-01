@@ -21,9 +21,9 @@ require 'chef/resource'
 class Chef
   class Resource
     class Service < Chef::Resource
-        
-      def initialize(name, collection=nil, node=nil)
-        super(name, collection, node)
+      
+      def initialize(name, run_context=nil)
+        super
         @resource_name = :service
         @service_name = name
         @enabled = nil
@@ -34,7 +34,9 @@ class Chef
         @status_command = nil
         @restart_command = nil
         @reload_command = nil
+        @priority = nil
         @action = "nothing"
+        @startup_type = :automatic
         @supports = { :restart => false, :reload => false, :status => false }
         @allowed_actions.push(:enable, :disable, :start, :stop, :restart, :reload)
       end
@@ -118,6 +120,22 @@ class Chef
         )
       end
 
+      # Priority arguments can have two forms:
+      #
+      # - a simple number, in which the default start runlevels get
+      #   that as the start value and stop runlevels get 100 - value.
+      #
+      # - a hash like { 2 => [:start, 20], 3 => [:stop, 55] }, where
+      #   the service will be marked as started with priority 20 in
+      #   runlevel 2, stopped in 3 with priority 55 and no symlinks or
+      #   similar for other runlevels
+      #
+      def priority(arg=nil)
+        set_or_return(:priority,
+                      arg,
+                      :kind_of => [ Integer, String, Hash ])
+      end
+
       def supports(args={})
         if args.is_a? Array
           args.each { |arg| @supports[arg] = true }
@@ -127,7 +145,15 @@ class Chef
           @supports
         end
       end
-
+      
+      # This attribute applies for Windows only.
+      def startup_type(arg=nil)
+        set_or_return(
+          :startup_type,
+          arg,
+          :equal_to => [:automatic, :mannual]
+        )
+      end
   
     end
   end

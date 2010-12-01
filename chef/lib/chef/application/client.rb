@@ -89,6 +89,11 @@ class Chef::Application::Client < Chef::Application
     :description => "Run chef-client periodically, in seconds",
     :proc => lambda { |s| s.to_i }
 
+  option :once,
+    :long => "--short",
+    :description => "Cancel any interval or splay options, run chef once and exit",
+    :boolean => true
+
   option :json_attribs,
     :short => "-j JSON_ATTRIBS",
     :long => "--json-attributes JSON_ATTRIBS",
@@ -113,12 +118,18 @@ class Chef::Application::Client < Chef::Application
     :description => "The chef server URL",
     :proc => nil
 
-  option :validation_token,
-    :short => "-t TOKEN",
-    :long => "--token TOKEN",
-    :description => "Set the openid validation token",
-    :proc => nil
-  
+  option :validation_key,
+    :short        => "-K KEY_FILE",
+    :long         => "--validation_key KEY_FILE",
+    :description  => "Set the validation key file location, used for registering new clients",
+    :proc         => nil
+
+  option :client_key,
+    :short        => "-k KEY_FILE",
+    :long         => "--client_key KEY_FILE",
+    :description  => "Set the client key file location",
+    :proc         => nil
+
   option :version,
     :short        => "-v",
     :long         => "--version",
@@ -143,6 +154,11 @@ class Chef::Application::Client < Chef::Application
    
     if Chef::Config[:daemonize]
       Chef::Config[:interval] ||= 1800
+    end
+
+    if Chef::Config[:once]
+      Chef::Config[:interval] = nil
+      Chef::Config[:splay] = nil
     end
 
     if Chef::Config[:json_attribs]
@@ -175,18 +191,12 @@ class Chef::Application::Client < Chef::Application
 
   def configure_logging
     super
-    Mixlib::Authentication::Log.logger = Chef::Log.logger
+    Chef::Log.verbose = Chef::Config[:verbose_logging]
+    Mixlib::Authentication::Log.logger = Ohai::Log.logger = Chef::Log.logger
   end
   
-  # Setup an instance of the chef client
-  # Why is this so ugly? surely the client should just read out of chef::config instead of needing the values to be assigned like this..
   def setup_application
     Chef::Daemon.change_privilege
-
-    @chef_client = Chef::Client.new
-    @chef_client.json_attribs = @chef_client_json
-    @chef_client.validation_token = Chef::Config[:validation_token]
-    @chef_client.node_name = Chef::Config[:node_name]   
   end
   
   # Run the chef client, optionally daemonizing or looping at intervals.
@@ -206,9 +216,11 @@ class Chef::Application::Client < Chef::Application
           Chef::Log.debug("Splay sleep #{splay} seconds")
           sleep splay
         end
+        @chef_client = Chef::Client.new(@chef_client_json)
+        @chef_client_json = nil
 
         @chef_client.run
-        
+        @chef_client = nil
         if Chef::Config[:interval]
           Chef::Log.debug("Sleeping for #{Chef::Config[:interval]} seconds")
           sleep Chef::Config[:interval]
@@ -219,14 +231,15 @@ class Chef::Application::Client < Chef::Application
         raise
       rescue Exception => e
         if Chef::Config[:interval]
-          Chef::Log.error("#{e.class}")
-          Chef::Log.fatal("#{e}\n#{e.backtrace.join("\n")}")
-          Chef::Log.fatal("Sleeping for #{Chef::Config[:interval]} seconds before trying again")
+          Chef::Log.error("#{e.class}:#{e}\n#{e.backtrace.join("\n")}")
+          Chef::Log.error("Sleeping for #{Chef::Config[:interval]} seconds before trying again")
           sleep Chef::Config[:interval]
           retry
         else
           raise
         end
+      ensure
+        GC.start
       end
     end
   end

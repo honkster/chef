@@ -24,7 +24,7 @@ class Chef
   class Knife
     class RoleList < Knife
 
-      banner "Sub-Command: role list (options)"
+      banner "knife role list (options)"
 
       option :with_uri,
         :short => "-w",
@@ -32,7 +32,7 @@ class Chef
         :description => "Show corresponding URIs"
 
       def run 
-        json_pretty_print(format_list_for_display(Chef::Role.list))
+        output(format_list_for_display(Chef::Role.list))
       end
     end
   end

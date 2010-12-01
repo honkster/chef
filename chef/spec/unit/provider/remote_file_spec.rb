@@ -6,9 +6,9 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -21,225 +21,204 @@ require File.expand_path(File.join(File.dirname(__FILE__), "..", "..", "spec_hel
 describe Chef::Provider::RemoteFile, "action_create" do
   before(:each) do
     @resource = Chef::Resource::RemoteFile.new("seattle")
-    @resource.path(File.join(File.dirname(__FILE__), "..", "..", "data", "seattle.txt"))
+    @resource.path(File.expand_path(File.join(CHEF_SPEC_DATA, "seattle.txt")))
     @resource.source("http://foo")
     @node = Chef::Node.new
     @node.name "latte"
-    @provider = Chef::Provider::RemoteFile.new(@node, @resource)
-    @provider.current_resource = @resource.clone
-  end
-  
-  it "should call do_remote_file" do
-    @provider.should_receive(:do_remote_file).with(@resource.source, @resource.path)
-    @provider.action_create
-  end
-  
-end
-
-describe Chef::Provider::RemoteFile, "do_remote_file" do
-  before(:each) do
-    @rest = mock(Chef::REST, { })
-    @tempfile = mock(Tempfile, { :path => "/tmp/foo", })
-    @tempfile.stub!(:open).and_return(@tempfile)
-    @tempfile.stub!(:closed?).and_return(false)
-    @tempfile.stub!(:close)
-    @rest.stub!(:get_rest).and_return(@tempfile)
-    @resource = Chef::Resource::RemoteFile.new("seattle")
-    @resource.path(File.join(File.dirname(__FILE__), "..", "..", "data", "seattle.txt"))
-    @resource.source("foo")
-    @resource.cookbook_name = "monkey"
-    @node = Chef::Node.new
-    @node.name "latte"
-    @node.fqdn "latte.local"
-    @provider = Chef::Provider::RemoteFile.new(@node, @resource)
-    @provider.stub!(:checksum).and_return("0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa")
-    @provider.current_resource = @resource.clone
-    @provider.current_resource.checksum("0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa")
-    File.stub!(:exists?).and_return(true)
-    FileUtils.stub!(:cp).and_return(true)
-    Chef::Platform.stub!(:find_platform_and_version).and_return([ :mac_os_x, "10.5.1" ])
-  end
-  
-  def do_remote_file
-    Chef::REST.stub!(:new).and_return(@rest)    
-    @provider.do_remote_file(@resource.source, @resource.path)
+    @provider = Chef::Provider::RemoteFile.new(@resource, @run_context)
   end
 
-  describe "when given a URI source" do
-    describe "and given a checksum" do
-      it "should not download the file if the checksum matches" do
-        @resource.checksum("0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa")
-        @resource.source("http://opscode.com/seattle.txt")
-        @rest.should_not_receive(:get_rest).with("http://opscode.com/seattle.txt", true).and_return(@tempfile)
-        do_remote_file
+  describe "when checking if the file is at the target version" do
+    it "considers the current file to be at the target version if it exists and matches the user-provided checksum" do
+      @provider.current_resource = @resource.dup
+      @resource.checksum("0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa")
+      @provider.current_resource.checksum("0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa")
+      @provider.current_resource_matches_target_checksum?.should be_true
+    end
+  end
+
+  describe "when fetching the file from the remote" do
+    before(:each) do
+      @tempfile = Tempfile.new("chef-rspec-remote_file_spec-line#{__LINE__}--")
+
+      @rest = mock(Chef::REST, { })
+      Chef::REST.stub!(:new).and_return(@rest)
+      @rest.stub!(:fetch).and_yield(@tempfile)
+
+      @resource.cookbook_name = "monkey"
+
+      @provider.stub!(:checksum).and_return("0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa")
+      @provider.current_resource = @resource.clone
+      @provider.current_resource.checksum("0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa")
+      File.stub!(:exists?).and_return(true)
+      FileUtils.stub!(:cp).and_return(true)
+      Chef::Platform.stub!(:find_platform_and_version).and_return([ :mac_os_x, "10.5.1" ])
+    end
+
+    after do
+      @tempfile.close!
+    end
+
+    before do
+      @resource.source("http://opscode.com/seattle.txt")
+    end
+
+    describe "and the resource specifies a checksum" do
+
+      describe "and the existing file matches the checksum exactly" do
+        before do
+          @resource.checksum("0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa")
+        end
+
+        it "does not download the file" do
+          @rest.should_not_receive(:fetch).with("http://opscode.com/seattle.txt").and_return(@tempfile)
+          @provider.action_create
+        end
+
+        it "does not update the resource" do
+          @provider.action_create
+          @provider.new_resource.should_not be_updated
+        end
+
       end
 
-      it "should not download the file if the checksum is a partial match from the beginning" do
-        @resource.checksum("0fd012fd")
-        @resource.source("http://opscode.com/seattle.txt")
-        @rest.should_not_receive(:get_rest).with("http://opscode.com/seattle.txt", true).and_return(@tempfile)
-        do_remote_file
+      describe "and the existing file matches the given partial checksum" do
+        before do
+          @resource.checksum("0fd012fd")
+        end
+
+        it "should not download the file if the checksum is a partial match from the beginning" do
+          @rest.should_not_receive(:fetch).with("http://opscode.com/seattle.txt").and_return(@tempfile)
+          @provider.action_create
+        end
+
+        it "does not update the resource" do
+          @provider.action_create
+          @provider.new_resource.should_not be_updated
+        end
+
       end
 
+      describe "and the existing file doesn't match the given checksum" do
+        it "downloads the file" do
+          @resource.checksum("this hash doesn't match")
+          @rest.should_receive(:fetch).with("http://opscode.com/seattle.txt").and_return(@tempfile)
+          @provider.action_create
+        end
 
-      it "should download the file if the checksum does not match" do
-        @resource.checksum("this hash doesn't match")
-        @resource.source("http://opscode.com/seattle.txt")
-        @rest.should_receive(:get_rest).with("http://opscode.com/seattle.txt", true).and_return(@tempfile)
-        do_remote_file
+        it "does not consider the checksum a match if the matching string is offset" do
+          # i.e., the existing file is      "0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa"
+          @resource.checksum("fd012fd")
+          @rest.should_receive(:fetch).with("http://opscode.com/seattle.txt").and_return(@tempfile)
+          @provider.action_create
+        end
       end
-
-      it "should download the file if the checksum matches, but not from the beginning" do
-        @resource.checksum("fd012fd")
-        @resource.source("http://opscode.com/seattle.txt")
-        @rest.should_receive(:get_rest).with("http://opscode.com/seattle.txt", true).and_return(@tempfile)
-        do_remote_file
-      end
-
 
     end
 
-    describe "and not given a checksum" do
+    describe "and the resource doesn't specify a checksum" do
       it "should download the file from the remote URL" do
         @resource.checksum(nil)
-        @resource.source("http://opscode.com/seattle.txt")
-        @rest.should_receive(:get_rest).with("http://opscode.com/seattle.txt", true).and_return(@tempfile)
-        do_remote_file
+        @rest.should_receive(:fetch).with("http://opscode.com/seattle.txt").and_return(@tempfile)
+        @provider.action_create
       end
     end
-  end
-  
-  describe "when given a non-URI source" do
-    describe "and using chef-solo" do
-      it "should load the file from the local cookbook" do
-        Chef::Config[:solo] = true
-        File.stub!(:open).and_return(@tempfile)
-        @provider.should_receive(:find_preferred_file).with("monkey", :remote_file, @resource.source, "latte.local", nil, nil).and_return(@tempfile.path)
-        do_remote_file
-      end
-      
-      after(:each) do
-        Chef::Config[:solo] = false
-      end
-    end
-    
-    it "should call generate_url with the current checksum as an extra attribute" do
-      @provider.should_receive(:generate_url).with(@resource.source, "files", { :checksum => "0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa"})
-      do_remote_file
+
+    it "should raise an exception if it's any other kind of retriable response than 304" do
+      r = Net::HTTPMovedPermanently.new("one", "two", "three")
+      e = Net::HTTPRetriableError.new("301", r)
+      @rest.stub!(:fetch).and_raise(e)
+      lambda { @provider.action_create }.should raise_error(Net::HTTPRetriableError)
     end
 
-    it "should call get_rest with a correctly composed url" do
-      url = "cookbooks/#{@resource.cookbook_name}/files?id=#{@resource.source}"
-      url += "&platform=mac_os_x"
-      url += "&version=10.5.1"
-      url += "&fqdn=latte.local"
-      url += "&node_name=latte"
-      url += "&checksum=0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa"
-      @rest.should_receive(:get_rest).with(url, true).and_return(@tempfile)
-      do_remote_file
-    end
-  end
-
-  it "should not transfer the file if it has not been changed" do
-    r = Net::HTTPNotModified.new("one", "two", "three")
-    e = Net::HTTPRetriableError.new("304", r)
-    @rest.stub!(:get_rest).and_raise(e)
-    do_remote_file.should eql(false)
-  end
-  
-  it "should raise an exception if it's any other kind of retriable response than 304" do
-    r = Net::HTTPMovedPermanently.new("one", "two", "three")
-    e = Net::HTTPRetriableError.new("301", r)
-    @rest.stub!(:get_rest).and_raise(e)
-    lambda { do_remote_file }.should raise_error(Net::HTTPRetriableError)
-  end
-  
-  it "should raise an exception if anything else happens" do
-    r = Net::HTTPBadRequest.new("one", "two", "three")
-    e = Net::HTTPServerException.new("fake exception", r)
-    @rest.stub!(:get_rest).and_raise(e)
-    lambda { do_remote_file }.should raise_error(Net::HTTPServerException)    
-  end
-  
-  it "should checksum the raw file" do
-    @provider.should_receive(:checksum).with(@tempfile.path).and_return("0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa")
-    do_remote_file
-  end
-
-  describe "when the target file does not exist" do
-    before do
-      ::File.stub!(:exists?).with(@resource.path).and_return(false)
-      @provider.stub!(:get_from_server).and_return(@tempfile)
+    it "should raise an exception if anything else happens" do
+      r = Net::HTTPBadRequest.new("one", "two", "three")
+      e = Net::HTTPServerException.new("fake exception", r)
+      @rest.stub!(:fetch).and_raise(e)
+      lambda { @provider.action_create }.should raise_error(Net::HTTPServerException)
     end
 
-    it "should copy the raw file to the new resource" do
-      FileUtils.should_receive(:cp).with(@tempfile.path, @resource.path).and_return(true)    
-      do_remote_file
+    it "should checksum the raw file" do
+      @provider.should_receive(:checksum).with(@tempfile.path).and_return("0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa")
+      @provider.action_create
     end
 
-    it "should set the new resource to updated" do
-      @resource.should_receive(:updated=).with(true)    
-      do_remote_file
-    end
-  end
-  
-  describe "when the target file already exists" do
-    before do
-      ::File.stub!(:exists?).with(@resource.path).and_return(true)
-      @provider.stub!(:get_from_server).and_return(@tempfile)
-    end
-
-    describe "and the checksum doesn't match" do
+    describe "when the target file does not exist" do
       before do
-        @provider.
-          current_resource.
-          checksum("0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924ab")
-      end
-
-      it "should backup the original file" do
-        @provider.should_receive(:backup).with(@resource.path).and_return(true)
-        do_remote_file
+        ::File.stub!(:exists?).with(@resource.path).and_return(false)
+        @provider.stub!(:get_from_server).and_return(@tempfile)
       end
 
       it "should copy the raw file to the new resource" do
-        FileUtils.should_receive(:cp).with(@tempfile.path, @resource.path).and_return(true)    
-        do_remote_file
+        FileUtils.should_receive(:cp).with(@tempfile.path, @resource.path).and_return(true)
+        @provider.action_create
       end
 
       it "should set the new resource to updated" do
-        @resource.should_receive(:updated=).with(true)    
-        do_remote_file
+        @provider.action_create
+        @resource.should be_updated
       end
     end
 
-    it "shouldn't backup the original file when it's the same" do
-      @provider.should_not_receive(:backup).with(@resource.path).and_return(true)
-      do_remote_file
-    end
-  end
-  
-  it "should set the owner if provided" do
-    @resource.owner("adam")
-    @provider.should_receive(:set_owner).and_return(true)
-    do_remote_file
-  end
-  
-  it "should set the group if provided" do
-    @resource.group("adam")
-    @provider.should_receive(:set_group).and_return(true)
-    do_remote_file
-  end
-  
-  it "should set the mode if provided" do
-    @resource.mode(0676)
-    @provider.should_receive(:set_mode).and_return(true)
-    do_remote_file
-  end
-  
-  it "should close the file when done" do
-    @tempfile.should_receive(:close)
-    do_remote_file
-  end
-# TODO: Finish these tests
+    describe "when the target file already exists" do
+      before do
+        ::File.stub!(:exists?).with(@resource.path).and_return(true)
+        @provider.stub!(:get_from_server).and_return(@tempfile)
+      end
 
+      describe "and the file downloaded from the remote is identical to the current" do
+        it "shouldn't backup the original file" do
+          @provider.should_not_receive(:backup).with(@resource.path)
+          @provider.action_create
+        end
+
+        it "doesn't mark the resource as updated" do
+          @provider.action_create
+          @provider.new_resource.should_not be_updated
+        end
+      end
+
+      describe "and the checksum doesn't match" do
+        before do
+          sha2_256 = "0fd012fdc96e96f8f7cf2046522a54aed0ce470224513e45da6bc1a17a4924aa-NO_MATCHY"
+          @provider.current_resource.checksum(sha2_256)
+        end
+
+        it "should backup the original file" do
+          @provider.should_receive(:backup).with(@resource.path).and_return(true)
+          @provider.action_create
+        end
+
+        it "should copy the raw file to the new resource" do
+          FileUtils.should_receive(:cp).with(@tempfile.path, @resource.path).and_return(true)
+          @provider.action_create
+        end
+
+        it "should set the new resource to updated" do
+          @provider.action_create
+          @resource.should be_updated
+        end
+      end
+
+      it "should set the owner if provided" do
+        @resource.owner("adam")
+        @provider.should_receive(:set_owner).and_return(true)
+        @provider.action_create
+      end
+
+      it "should set the group if provided" do
+        @resource.group("adam")
+        @provider.should_receive(:set_group).and_return(true)
+        @provider.action_create
+      end
+
+      it "should set the mode if provided" do
+        @resource.mode(0676)
+        @provider.should_receive(:set_mode).and_return(true)
+        @provider.action_create
+      end
+
+    end
+
+  end
 end

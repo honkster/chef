@@ -23,7 +23,8 @@ class Chef
   class Knife
     class DataBagEdit < Knife
 
-      banner "Sub-Command: data bag edit BAG ITEM (options)"
+      banner "knife data bag edit BAG ITEM (options)"
+      category "data bag"
 
       def run 
         if @name_args.length != 2
@@ -38,7 +39,7 @@ class Chef
 
           Chef::Log.info("Saved data_bag_item[#{@name_args[1]}]")
 
-          json_pretty_print(format_for_display(object)) if config[:print_after]
+          output(format_for_display(object)) if config[:print_after]
         end
       end
     end

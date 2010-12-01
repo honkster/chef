@@ -24,7 +24,7 @@ class Chef
   class Knife
     class RoleShow < Knife
 
-      banner "Sub-Command: role show ROLE (options)"
+      banner "knife role show ROLE (options)"
 
       option :attribute,
         :short => "-a ATTR",
@@ -32,8 +32,16 @@ class Chef
         :description => "Show only one attribute"
 
       def run 
-        role = Chef::Role.load(@name_args[0])
-        json_pretty_print(format_for_display(role))
+        @role_name = @name_args[0]
+
+        if @role_name.nil?
+          show_usage
+          Chef::Log.fatal("You must specify a role name")
+          exit 1
+        end
+        
+        role = Chef::Role.load(@role_name)
+        output(format_for_display(role))
       end
 
     end

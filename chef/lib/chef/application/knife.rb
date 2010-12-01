@@ -31,12 +31,13 @@ require 'uri'
 
 class Chef::Application::Knife < Chef::Application
 
+  NO_COMMAND_GIVEN = "You need to pass a sub-command (e.g., knife SUB-COMMAND)\n"
+
   banner "Usage: #{$0} sub-command (options)"
 
   option :config_file, 
     :short => "-c CONFIG",
     :long  => "--config CONFIG",
-    :default => File.join(ENV['HOME'], '.chef', 'knife.rb'),
     :description => "The configuration file to use"
 
   option :log_level, 
@@ -90,11 +91,21 @@ class Chef::Application::Knife < Chef::Application
     :long => "--yes",
     :description => "Say yes to all prompts for confirmation"
 
+  option :defaults,
+    :long => "--defaults",
+    :description => "Accept default values for all questions"
+
   option :print_after,
     :short => "-p",
     :long => "--print-after",
     :description => "Show the data after a destructive operation"
-  
+
+  option :format,
+    :short => "-F FORMAT",
+    :long => "--format FORMAT",
+    :description => "Which format to use for output",
+    :default => "json"
+
   option :version,
     :short        => "-v",
     :long         => "--version",
@@ -105,9 +116,10 @@ class Chef::Application::Knife < Chef::Application
 
   # Run knife 
   def run
+    Mixlib::Log::Formatter.show_time = false
     validate_and_parse_options
-    knife = Chef::Knife.find_command(ARGV, self.class.options)
-    knife.run
+    Chef::Knife.run(ARGV, options)
+    exit 0
   end
   
   private
@@ -115,8 +127,15 @@ class Chef::Application::Knife < Chef::Application
   def validate_and_parse_options
     # Checking ARGV validity *before* parse_options because parse_options
     # mangles ARGV in some situations
-    print_help_and_exit(2, "Sorry, you need to pass a sub-command first!") if no_subcommand_given?
-    print_help_and_exit if no_command_given?
+    if no_command_given?
+      print_help_and_exit(1, NO_COMMAND_GIVEN)
+    elsif no_subcommand_given?
+      if (want_help? || want_version?)
+        print_help_and_exit
+      else 
+        print_help_and_exit(2, NO_COMMAND_GIVEN)
+      end
+    end
   end
   
   def no_subcommand_given?
@@ -126,9 +145,17 @@ class Chef::Application::Knife < Chef::Application
   def no_command_given?
     ARGV.empty?
   end
+
+  def want_help?
+    ARGV[0] =~ /^(--help|-h)$/
+  end
+
+  def want_version?
+    ARGV[0] =~ /^(--version|-v)$/
+  end
   
   def print_help_and_exit(exitcode=1, fatal_message=nil)
-    Chef::Log.fatal(fatal_message) if fatal_message
+    Chef::Log.error(fatal_message) if fatal_message
   
     begin
       self.parse_options

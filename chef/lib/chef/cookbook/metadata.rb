@@ -25,13 +25,21 @@ require 'chef/cookbook/metadata/version'
 
 class Chef
   class Cookbook
+    # == Chef::Cookbook::Metadata
+    # Chef::Cookbook::Metadata provides a convenient DSL for declaring metadata
+    # about Chef Cookbooks.
     class Metadata
+
+      COMPARISON_FIELDS = [ :name, :description, :long_description, :maintainer,
+                            :maintainer_email, :license, :platforms, :dependencies,
+                            :recommendations, :suggestions, :conflicting, :providing,
+                            :replacing, :attributes, :groupings, :recipes, :version]
     
       include Chef::Mixin::CheckHelper
       include Chef::Mixin::ParamsValidate
       include Chef::Mixin::FromFile
 
-      attr_accessor :cookbook, 
+      attr_reader   :cookbook, 
                     :platforms,
                     :dependencies,
                     :recommendations,
@@ -74,12 +82,18 @@ class Chef
         @recipes = Mash.new
         @version = Version.new "0.0.0"
         if cookbook
-          @recipes = cookbook.recipes.inject({}) do |r, e| 
+          @recipes = cookbook.fully_qualified_recipe_names.inject({}) do |r, e| 
             e = self.name if e =~ /::default$/ 
             r[e] = ""
             self.provides e
             r
           end
+        end
+      end
+
+      def ==(other)
+        COMPARISON_FIELDS.inject(true) do |equal_so_far, field|
+          equal_so_far && other.respond_to?(field) && (other.send(field) == send(field))
         end
       end
 
@@ -330,7 +344,7 @@ class Chef
             :description => { :kind_of => String },
             :choice => { :kind_of => [ Array ], :default => [] },
             :calculated => { :equal_to => [ true, false ], :default => false },
-            :type => { :equal_to => [ "string", "array", "hash" ], :default => "string" },
+            :type => { :equal_to => [ "string", "array", "hash", "symbol" ], :default => "string" },
             :required => { :equal_to => [ "required", "recommended", "optional", true, false ], :default => "optional" },
             :recipes => { :kind_of => [ Array ], :default => [] },
             :default => { :kind_of => [ String, Array, Hash ] }
@@ -367,23 +381,23 @@ class Chef
 
       def to_json(*a)
         result = {
-          :name => self.name,
-          :description => self.description,
+          :name             => self.name,
+          :description      => self.description,
           :long_description => self.long_description,
-          :maintainer => self.maintainer,
+          :maintainer       => self.maintainer,
           :maintainer_email => self.maintainer_email,
-          :license => self.license,
-          :platforms => self.platforms,
-          :dependencies => self.dependencies,
-          :recommendations => self.recommendations,
-          :suggestions => self.suggestions,
-          :conflicting => self.conflicting,
-          :providing => self.providing,
-          :replacing => self.replacing,
-          :attributes => self.attributes,
-          :groupings => self.groupings,
-          :recipes => self.recipes,
-          :version => self.version
+          :license          => self.license,
+          :platforms        => self.platforms,
+          :dependencies     => self.dependencies,
+          :recommendations  => self.recommendations,
+          :suggestions      => self.suggestions,
+          :conflicting      => self.conflicting,
+          :providing        => self.providing,
+          :replacing        => self.replacing,
+          :attributes       => self.attributes,
+          :groupings        => self.groupings,
+          :recipes          => self.recipes,
+          :version          => self.version
         }
         result.to_json(*a)
       end
@@ -395,24 +409,23 @@ class Chef
       end
 
       def from_hash(o)
-        self.name o['name'] if o.has_key?('name')
-        self.description o['description'] if o.has_key?('description')
-        self.long_description o['long_description'] if o.has_key?('long_description')
-        self.maintainer o['maintainer'] if o.has_key?('maintainer')
-        self.maintainer_email o['maintainer_email'] if o.has_key?('maintainer_email')
-        self.license o['license'] if o.has_key?('license')
-        self.version o['version'] if o.has_key?('version')
-        self.platforms = o['platforms'] if o.has_key?('platforms')
-        self.dependencies = o['dependencies'] if o.has_key?('dependencies')
-        self.recommendations = o['recommendations'] if o.has_key?('recommendations')
-        self.suggestions = o['suggestions'] if o.has_key?('suggestions')
-        self.conflicting = o['conflicting'] if o.has_key?('conflicting')
-        self.providing = o['providing'] if o.has_key?('providing')
-        self.replacing = o['replacing'] if o.has_key?('replacing')
-        self.attributes = o['attributes'] if o.has_key?('attributes')
-        self.groupings = o['groupings'] if o.has_key?('groupings')
-        self.recipes = o['recipes'] if o.has_key?('recipes')
-        self.version = o['version'] if o.has_key?('version')
+        @name                         = o['name'] if o.has_key?('name')
+        @description                  = o['description'] if o.has_key?('description')
+        @long_description             = o['long_description'] if o.has_key?('long_description')
+        @maintainer                   = o['maintainer'] if o.has_key?('maintainer')
+        @maintainer_email             = o['maintainer_email'] if o.has_key?('maintainer_email')
+        @license                      = o['license'] if o.has_key?('license')
+        @platforms                    = o['platforms'] if o.has_key?('platforms')
+        @dependencies                 = o['dependencies'] if o.has_key?('dependencies')
+        @recommendations              = o['recommendations'] if o.has_key?('recommendations')
+        @suggestions                  = o['suggestions'] if o.has_key?('suggestions')
+        @conflicting                  = o['conflicting'] if o.has_key?('conflicting')
+        @providing                    = o['providing'] if o.has_key?('providing')
+        @replacing                    = o['replacing'] if o.has_key?('replacing')
+        @attributes                   = o['attributes'] if o.has_key?('attributes')
+        @groupings                    = o['groupings'] if o.has_key?('groupings')
+        @recipes                      = o['recipes'] if o.has_key?('recipes')
+        @version                      = o['version'] if o.has_key?('version')
         self
       end
 

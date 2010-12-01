@@ -24,14 +24,14 @@ class Chef
   class Knife
     class RoleFromFile < Knife
 
-      banner "Sub-Command: role from file FILE (options)"
+      banner "knife role from file FILE (options)"
 
       def run 
         updated = load_from_file(Chef::Role, @name_args[0])
 
         updated.save
         
-        json_pretty_print(format_for_display(updated)) if config[:print_after]
+        output(format_for_display(updated)) if config[:print_after]
 
         Chef::Log.warn("Updated Role #{updated.name}!")
       end

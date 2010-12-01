@@ -20,13 +20,14 @@ require File.expand_path(File.join(File.dirname(__FILE__), "..", "..", "spec_hel
 
 describe Chef::Knife::NodeEdit do
   before(:each) do
+    Chef::Config[:node_name]  = "webmonkey.example.com"
     @knife = Chef::Knife::NodeEdit.new
     @knife.config = {
       :attribute => nil,
       :print_after => nil
     }
     @knife.name_args = [ "adam" ]
-    @knife.stub!(:json_pretty_print).and_return(true)
+    @knife.stub!(:output).and_return(true)
     @node = Chef::Node.new() 
     @node.stub!(:save)
     Chef::Node.stub!(:load).and_return(@node)
@@ -46,13 +47,21 @@ describe Chef::Knife::NodeEdit do
 
     it "should save the edited node data" do
       pansy = Chef::Node.new
+      @node.name("new_node_name")
       @knife.should_receive(:edit_data).with(@node).and_return(pansy)
       pansy.should_receive(:save)
       @knife.run
     end
 
+    it "should not save the unedited node data" do
+      pansy = Chef::Node.new
+      @knife.should_receive(:edit_data).with(@node).and_return(pansy)
+      pansy.should_not_receive(:save)
+      @knife.run
+    end
+
     it "should not print the node" do
-      @knife.should_not_receive(:json_pretty_print).with("poop")
+      @knife.should_not_receive(:output).with("poop")
       @knife.run
     end
 
@@ -60,7 +69,7 @@ describe Chef::Knife::NodeEdit do
       it "should pretty print the node, formatted for display" do
         @knife.config[:print_after] = true
         @knife.should_receive(:format_for_display).with(@node).and_return("poop")
-        @knife.should_receive(:json_pretty_print).with("poop")
+        @knife.should_receive(:output).with("poop")
         @knife.run
       end
     end

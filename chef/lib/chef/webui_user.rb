@@ -22,7 +22,6 @@ require 'chef/mixin/params_validate'
 require 'chef/couchdb'
 require 'chef/index_queue'
 require 'digest/sha1'
-require 'rubygems'
 require 'json'
   
 
@@ -33,7 +32,6 @@ class Chef
     attr_reader   :password, :salt, :couchdb_id, :couchdb_rev
     
     include Chef::Mixin::ParamsValidate
-    include Chef::IndexQueue::Indexable
     
     DESIGN_DOCUMENT = {
       "version" => 3,

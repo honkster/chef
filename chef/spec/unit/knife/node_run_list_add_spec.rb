@@ -20,12 +20,13 @@ require File.expand_path(File.join(File.dirname(__FILE__), "..", "..", "spec_hel
 
 describe Chef::Knife::NodeRunListAdd do
   before(:each) do
+    Chef::Config[:node_name]  = "webmonkey.example.com"
     @knife = Chef::Knife::NodeRunListAdd.new
     @knife.config = {
       :after => nil
     }
     @knife.name_args = [ "adam", "role[monkey]" ]
-    @knife.stub!(:json_pretty_print).and_return(true)
+    @knife.stub!(:output).and_return(true)
     @node = Chef::Node.new() 
     @node.stub!(:save).and_return(true)
     Chef::Node.stub!(:load).and_return(@node)
@@ -48,7 +49,7 @@ describe Chef::Knife::NodeRunListAdd do
     end
 
     it "should print the run list" do
-      @knife.should_receive(:json_pretty_print).and_return(true)
+      @knife.should_receive(:output).and_return(true)
       @knife.run
     end
 

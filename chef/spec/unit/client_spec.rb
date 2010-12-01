@@ -1,14 +1,16 @@
 #
 # Author:: Adam Jacob (<adam@opscode.com>)
-# Copyright:: Copyright (c) 2008 Opscode, Inc.
+# Author:: Tim Hinderliter (<tim@opscode.com>)
+# Author:: Christopher Walters (<cw@opscode.com>)
+# Copyright:: Copyright (c) 2008, 2010 Opscode, Inc.
 # License:: Apache License, Version 2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,225 +20,134 @@
 
 require File.expand_path(File.join(File.dirname(__FILE__), "..", "spec_helper"))
 
-describe Chef::Client, "initialize" do
-  it "should create a new Chef::Client object" do
-    Chef::Client.new.should be_kind_of(Chef::Client)
-  end
-end
+require 'chef/run_context'
+require 'chef/rest'
 
-describe Chef::Client, "run" do
-  before(:each) do
+describe Chef::Client do
+  before do
+    # Node/Ohai data
+    @hostname = "hostname"
+    @fqdn = "hostname.example.org"
+    Chef::Config[:node_name] = @fqdn
+    ohai_data = { :fqdn             => @fqdn,
+                  :hostname         => @hostname,
+                  :platform         => 'example-platform',
+                  :platform_version => 'example-platform',
+                  :data             => {} }
+    ohai_data.stub!(:all_plugins).and_return(true)
+    ohai_data.stub!(:data).and_return(ohai_data[:data])
+    Ohai::System.stub!(:new).and_return(ohai_data)
+
+    @node = Chef::Node.new(@hostname)
+    @node.name(@fqdn)
+    @node[:platform] = "example-platform"
+    @node[:platform_version] = "example-platform-1.0"
+
     @client = Chef::Client.new
-    to_stub = [
-      :build_node,
-      :register,
-      :sync_cookbooks,
-      :save_node,
-      :converge
-    ]
-    to_stub.each do |method|
-      @client.stub!(method).and_return(true)
-    end
-    
-    @mock_ohai = {
-      :fqdn => "foo.bar.com",
-      :hostname => "foo"
-    }
-    @mock_ohai.stub!(:refresh_plugins).and_return(true)
-    Ohai::System.stub!(:new).and_return(@mock_ohai)
-    
-    @client.stub!(:run_ohai)
-    @client.stub!(:ohai).and_return(@mock_ohai)
-    
-    time = Time.now
-    Time.stub!(:now).and_return(time)
-    Chef::Compile.stub!(:new).and_return(mock("Chef::Compile", :null_object => true))
-    Chef::Runner.stub!(:new).and_return(mock("Chef::Runner", :null_object => true))
-  end
-  
-  it "should start the run clock timer" do
-    time = Time.now
-    Time.should_receive(:now).twice.and_return(time)
-    @client.run
-  end
-
-  it "should build the node" do
-    @client.should_receive(:build_node).and_return(true)
-    @client.run
-  end
-  
-  it "should register for a client" do
-    @client.should_receive(:register).and_return(true)
-    @client.run
-  end
-  
-  it "should synchronize the cookbooks from the server" do
-    @client.should_receive(:sync_cookbooks).and_return(true)
-    @client.run
-  end
-  
-  it "should save the nodes state on the server (twice!)" do
-    @client.should_receive(:save_node).exactly(3).times.and_return(true)
-    @client.run
-  end
-  
-  it "should converge the node to the proper state" do
-    @client.should_receive(:converge).and_return(true)
-    @client.run
-  end
-
-end
-
-describe Chef::Client, "run_solo" do
-  before(:each) do
-    @client = Chef::Client.new
-    [:run_ohai, :node_name, :build_node].each do |method|
-      @client.stub!(method).and_return(true)
-    end
-    Chef::Compile.stub!(:new).and_return(mock("Chef::Compile", :null_object => true))
-    Chef::Runner.stub!(:new).and_return(mock("Chef::Runner", :null_object => true))
-  end
-  
-  it "should start/stop the run timer" do
-    time = Time.now
-    Time.should_receive(:now).at_least(1).times.and_return(time)
-    @client.run_solo
-  end
-
-  it "should build the node" do
-    @client.should_receive(:build_node).and_return(true)
-    @client.run_solo
-  end
-  
-  it "should converge the node to the proper state" do
-    @client.should_receive(:converge).and_return(true)
-    @client.run_solo
-  end
-
-  it "should use the configured cookbook_path" do
-    Chef::Config[:cookbook_path] = ['one', 'two']
-    @client.run_solo
-    Chef::Config[:cookbook_path].should eql(['one', 'two'])
-  end
-end
-
-describe Chef::Client, "build_node" do
-  before(:each) do
-    @mock_ohai = {
-      :fqdn => "foo.bar.com",
-      :hostname => "foo"
-    }
-    @mock_ohai.stub!(:refresh_plugins).and_return(true)
-    Ohai::System.stub!(:new).and_return(@mock_ohai)
-    @node = Chef::Node.new
-    @mock_rest.stub!(:get_rest).and_return(@node)
-    Chef::REST.stub!(:new).and_return(@mock_rest)
-    @client = Chef::Client.new
-    Chef::Platform.stub!(:find_platform_and_version).and_return(["FooOS", "1.3.3.7"])
-    Chef::Config[:node_name] = nil
-  end
-  
-  it "should set the name equal to the FQDN" do
-    @mock_rest.stub!(:get_rest).and_return(nil)
-    @client.build_node
-    @client.node.name.should eql("foo.bar.com")
-  end
-  
-  it "should set the name equal to the hostname if FQDN is not available" do
-    @mock_ohai[:fqdn] = nil
-    @mock_rest.stub!(:get_rest).and_return(nil)
-    @client.build_node
-    @client.node.name.should eql("foo")
-  end
-  
-  it "should add any json attributes to the node" do
-    @client.json_attribs = { "one" => "two", "three" => "four" }
-    @client.build_node
-    @client.node.one.should eql("two")
-    @client.node.three.should eql("four")
-  end
-  
-  it "should allow you to set recipes from the json attributes" do
-    @client.json_attribs = { "recipes" => [ "one", "two", "three" ]}
-    @client.build_node
-    @client.node.recipes.should == [ "one", "two", "three" ]
-  end
-  
-  it "should allow you to set a run_list from the json attributes" do
-    @client.json_attribs = { "run_list" => [ "role[base]", "recipe[chef::server]" ] }
-    @client.build_node
-    @client.node.run_list.should == [ "role[base]", "recipe[chef::server]" ]
-  end
-  
-  it "should not add duplicate recipes from the json attributes" do
-    @client.node = Chef::Node.new
-    @client.node.recipes << "one"
-    @client.json_attribs = { "recipes" => [ "one", "two", "three" ]}
-    @client.build_node
-    @client.node.recipes.should  == [ "one", "two", "three" ]
-  end
-  
-  it "should set the tags attribute to an empty array if it is not already defined" do
-    @client.build_node
-    @client.node.tags.should eql([])
-  end
-  
-  it "should not set the tags attribute to an empty array if it is already defined" do
     @client.node = @node
-    @client.node[:tags] = [ "radiohead" ]
-    @client.build_node
-    @client.node.tags.should eql([ "radiohead" ])
   end
-end
 
-describe Chef::Client, "register" do
-  before do
-    @mock_rest = mock("Chef::REST", :null_object => true)
-    @mock_rest.stub!(:get_rest).and_return(true)
-    @mock_rest.stub!(:register).and_return(true)
-    Chef::REST.stub!(:new).and_return(@mock_rest)
-    @chef_client = Chef::Client.new
-    @chef_client.node_name = "testnode"
-    @chef_client.stub!(:determine_node_name).and_return(true)
-    File.stub!(:exists?).and_return(false)
-  end
-  
-  describe "when the validation key is present" do
-    before(:each) do
-      File.stub!(:exists?).with(Chef::Config[:validation_key]).and_return(true)
+  describe "run" do
+    it "should identify the node and run ohai, then register the client" do
+
+      mock_chef_rest_for_node = OpenStruct.new({ })
+      mock_chef_rest_for_client = OpenStruct.new({ })
+      mock_couchdb = OpenStruct.new({ })
+
+      Chef::CouchDB.stub(:new).and_return(mock_couchdb)
+
+      # --Client.register
+      #   Use a filename we're sure doesn't exist, so that the registration
+      #   code creates a new client.
+      temp_client_key_file = Tempfile.new("chef_client_spec__client_key")
+      temp_client_key_file.close
+      FileUtils.rm(temp_client_key_file.path)
+      Chef::Config[:client_key] = temp_client_key_file.path
+
+      #   Client.register will register with the validation client name.
+      Chef::REST.should_receive(:new).with(Chef::Config[:chef_server_url]).at_least(1).times.and_return(mock_chef_rest_for_node)
+      Chef::REST.should_receive(:new).with(Chef::Config[:client_url], Chef::Config[:validation_client_name], Chef::Config[:validation_key]).and_return(mock_chef_rest_for_client)
+      mock_chef_rest_for_client.should_receive(:register).with(@fqdn, Chef::Config[:client_key]).and_return(true)
+      #   Client.register will then turn around create another
+      #   Chef::REST object, this time with the client key it got from the
+      #   previous step.
+      Chef::REST.should_receive(:new).with(Chef::Config[:chef_server_url], @fqdn, Chef::Config[:client_key]).and_return(mock_chef_rest_for_node)
+
+      # --Client.build_node
+      #   looks up the node, which we will return, then later saves it.
+      mock_chef_rest_for_node.should_receive(:get_rest).with("nodes/#{@fqdn}").and_return(@node)
+      mock_chef_rest_for_node.should_receive(:put_rest).with("nodes/#{@fqdn}", @node).exactly(2).times.and_return(@node)
+
+      # --Client.sync_cookbooks -- downloads the list of cookbooks to sync
+      #
+
+      # after run, check proper mutation of node
+      # e.g., node.automatic_attrs[:platform], node.automatic_attrs[:platform_version]
+      Chef::Config.node_path(File.expand_path(File.join(CHEF_SPEC_DATA, "run_context", "nodes")))
+      Chef::Config.cookbook_path(File.expand_path(File.join(CHEF_SPEC_DATA, "run_context", "cookbooks")))
+
+      @client.stub!(:sync_cookbooks).and_return({})
+      @client.run
+
+
+      # check that node has been filled in correctly
+      @node.automatic_attrs[:platform].should == "example-platform"
+      @node.automatic_attrs[:platform_version].should == "example-platform-1.0"
     end
 
-    it "should sign requests with the validation key" do
-      Chef::REST.should_receive(:new).with(Chef::Config[:client_url], Chef::Config[:validation_client_name], Chef::Config[:validation_key]).and_return(@mock_rest)
-      @chef_client.register
+    describe "when notifying other objects of the status of the chef run" do
+      before do
+        Chef::Client.clear_notifications
+        Chef::Node.stub!(:find_or_create).and_return(@node)
+        @node.stub!(:save)
+        @client.build_node
+      end
+
+      it "notifies observers that the run has started" do
+        notified = false
+        Chef::Client.when_run_starts do |run_status|
+          run_status.node.should == @node
+          notified = true
+        end
+
+        @client.run_started
+        notified.should be_true
+      end
+
+      it "notifies observers that the run has completed successfully" do
+        notified = false
+        Chef::Client.when_run_completes_successfully do |run_status|
+          run_status.node.should == @node
+          notified = true
+        end
+
+        @client.run_completed_successfully
+        notified.should be_true
+      end
+
+      it "notifies observers that the run failed" do
+        notified = false
+        Chef::Client.when_run_fails do |run_status|
+          run_status.node.should == @node
+          notified = true
+        end
+
+        @client.run_failed
+        notified.should be_true
+      end
     end
+  end
 
-    it "should register for a new key-pair" do
-      @mock_rest.should_receive(:register).with("testnode", Chef::Config[:client_key])
-      @chef_client.register
+  describe "build_node" do
+    it "should expand the roles and recipes for the node" do
+      Chef::Node.should_receive(:find_or_create).and_return(@node)
+      @node.should_receive(:save).and_return(true)
+
+      @node[:roles].should be_nil
+      @node[:recipes].should be_nil
+      @client.build_node
+      @node[:roles].should_not be_nil
+      @node[:recipes].should_not be_nil
     end
   end
-
-  it "should setup the rest client to use the client key-pair" do
-    Chef::REST.should_receive(:new).with(Chef::Config[:chef_server_url]).and_return(@mock_rest)
-    @chef_client.register 
-  end
-
 end
-
-describe Chef::Client, "run_ohai" do
-  before do
-    @mock_ohai = mock("Ohai::System", :null_object => true)
-    @mock_ohai.stub!(:refresh_plugins).and_return(true)
-    @mock_ohai.stub!(:refresh_plugins).and_return(true)
-    Ohai::System.stub!(:new).and_return(@mock_ohai)
-    @chef_client = Chef::Client.new
-    @chef_client.ohai = @mock_ohai
-  end
-
-  it "refresh the plugins if ohai has already been run" do
-    @mock_ohai.should_receive(:refresh_plugins).and_return(true)
-    @chef_client.run_ohai
-  end
-end
-

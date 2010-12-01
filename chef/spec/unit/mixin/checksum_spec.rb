@@ -27,8 +27,8 @@ end
 describe Chef::Mixin::Checksum do
   before(:each) do
     @checksum_user = Chef::CMCCheck.new
-    @cache = Chef::Cache::Checksum.instance
-    @file = File.dirname(__FILE__) + "/../../data/checksum/random.txt"
+    @cache = Chef::ChecksumCache.instance
+    @file = CHEF_SPEC_DATA + "/checksum/random.txt"
     @stat = mock("File::Stat", { :mtime => Time.at(0) })
     File.stub!(:stat).and_return(@stat)
   end

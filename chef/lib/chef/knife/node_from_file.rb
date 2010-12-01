@@ -24,14 +24,14 @@ class Chef
   class Knife
     class NodeFromFile < Knife
 
-      banner "Sub-Command: node from file FILE (options)"
+      banner "knife node from file FILE (options)"
 
       def run 
         updated = load_from_file(Chef::Node, @name_args[0])
 
         updated.save
         
-        json_pretty_print(format_for_display(updated)) if config[:print_after]
+        output(format_for_display(updated)) if config[:print_after]
 
         Chef::Log.warn("Updated Node #{updated.name}!")
       end

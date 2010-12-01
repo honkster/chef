@@ -19,10 +19,11 @@
 
 require 'chef/role'
 
-class ChefServerWebui::Roles < ChefServerWebui::Application
+class Roles < Application
 
   provides :html
-  before :login_required 
+  before :login_required
+  before :require_admin, :only => [:destroy]
   
   # GET /roles
   def index
@@ -92,7 +93,7 @@ class ChefServerWebui::Roles < ChefServerWebui::Application
       @role.default_attributes(JSON.parse(params[:default_attributes])) if params[:default_attributes] != ''
       @role.override_attributes(JSON.parse(params[:override_attributes])) if params[:override_attributes] != ''
       @role.create
-      redirect(slice_url(:roles), :message => { :notice => "Created Role #{@role.name}" })
+      redirect(url(:roles), :message => { :notice => "Created Role #{@role.name}" })
     rescue => e
       Chef::Log.error("#{e}\n#{e.backtrace.join("\n")}")
       @available_recipes = get_available_recipes 
@@ -100,7 +101,7 @@ class ChefServerWebui::Roles < ChefServerWebui::Application
       @role = Chef::Role.new
       @role.default_attributes(JSON.parse(params[:default_attributes])) if params[:default_attributes] != ''
       @role.override_attributes(JSON.parse(params[:override_attributes])) if params[:override_attributes] != ''
-      @run_list = params[:for_role] ? params[:for_role] : []
+      @run_list = Chef::RunList.new.reset!(Array(params[:for_role]))
       @_message = { :error => "Could not create role" }
       render :new
     end
@@ -121,7 +122,8 @@ class ChefServerWebui::Roles < ChefServerWebui::Application
       Chef::Log.error("#{e}\n#{e.backtrace.join("\n")}")
       @available_recipes = get_available_recipes 
       @available_roles = Chef::Role.list.keys.sort
-      @run_list = params[:for_role] ? params[:for_role] : []
+      @run_list = Chef::RunList.new.reset!( Array(params[:for_role]))
+      Chef::Log.error(@run_list.inspect)
       @role.default_attributes(JSON.parse(params[:default_attributes])) if params[:default_attributes] != ''
       @role.override_attributes(JSON.parse(params[:override_attributes])) if params[:override_attributes] != ''
       @_message = {:error => "Could not update role #{params[:id]}"}
@@ -134,7 +136,7 @@ class ChefServerWebui::Roles < ChefServerWebui::Application
     begin
       @role = Chef::Role.load(params[:id])
       @role.destroy
-      redirect(absolute_slice_url(:roles), :message => { :notice => "Role #{@role.name} deleted successfully." }, :permanent => true)
+      redirect(absolute_url(:roles), :message => { :notice => "Role #{@role.name} deleted successfully." }, :permanent => true)
     rescue => e
       Chef::Log.error("#{e}\n#{e.backtrace.join("\n")}")
       @role_list = Chef::Role.list()

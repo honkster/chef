@@ -21,13 +21,14 @@ require 'chef/resource/execute'
 class Chef
   class Resource
     class Script < Chef::Resource::Execute
-        
-      def initialize(name, collection=nil, node=nil)
-        super(name, collection, node)
+      
+      def initialize(name, run_context=nil)
+        super
         @resource_name = :script
         @command = name
         @code = nil
         @interpreter = nil
+        @flags = nil
       end
       
       def code(arg=nil)
@@ -41,6 +42,14 @@ class Chef
       def interpreter(arg=nil)
         set_or_return(
           :interpreter,
+          arg,
+          :kind_of => [ String ]
+        )
+      end
+
+      def flags(arg=nil)
+        set_or_return(
+          :flags,
           arg,
           :kind_of => [ String ]
         )

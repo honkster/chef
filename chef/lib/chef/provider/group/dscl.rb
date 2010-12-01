@@ -50,7 +50,7 @@ class Chef
           gid = nil; next_gid_guess = 200
           groups_gids = safe_dscl("list /Groups gid")
           while(next_gid_guess < search_limit + 200)
-            if groups_gids =~ Regexp.new("#{next_gid_guess}\n")
+            if groups_gids =~ Regexp.new("#{Regexp.escape(next_gid_guess.to_s)}\n")
               next_gid_guess += 1
             else
               gid = next_gid_guess
@@ -63,7 +63,7 @@ class Chef
         def gid_used?(gid)
           return false unless gid
           groups_gids = safe_dscl("list /Groups gid")
-          !! ( groups_gids =~ Regexp.new("#{gid}\n") )
+          !! ( groups_gids =~ Regexp.new("#{Regexp.escape(gid.to_s)}\n") )
         end
 
         def set_gid
@@ -90,35 +90,26 @@ class Chef
         end
         
         def create_group
-          manage_group(false)
+          dscl_create_group
+          set_gid
+          set_members
         end
         
-        def manage_group(manage=true)#
-          fields = []
-          if manage
-            [:group_name,:gid,:members].each do |field|
-              if @current_resource.send(field) != @new_resource.send(field)
-                fields << field if @new_resource.send(field)
-              end
-            end
-          else
-            # create
-            fields = [:group_name,:gid,:members]
+        def manage_group
+          if @new_resource.group_name && (@current_resource.group_name != @new_resource.group_name)
+            dscl_create_group
           end
-
-          fields.each do |field|
-            case field
-            when :group_name
-              safe_dscl("create /Groups/#{@new_resource.group_name}")
-              safe_dscl("create /Groups/#{@new_resource.group_name} Password '*'")
-              
-            when :gid
-              set_gid
-              
-            when :members
-              set_members
-            end
+          if @new_resource.gid && (@current_resource.gid != @new_resource.gid)
+            set_gid
           end
+          if @new_resource.members && (@current_resource.members != @new_resource.members)
+            set_members
+          end
+        end
+        
+        def dscl_create_group
+          safe_dscl("create /Groups/#{@new_resource.group_name}")
+          safe_dscl("create /Groups/#{@new_resource.group_name} Password '*'")
         end
         
         def remove_group

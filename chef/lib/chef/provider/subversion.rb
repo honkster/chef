@@ -30,24 +30,27 @@ class Chef
       
       def load_current_resource
         @current_resource = Chef::Resource::Subversion.new(@new_resource.name)
-        if current_revision = find_current_revision
-          @current_resource.revision current_revision
+
+        unless [:export, :force_export].include?(@new_resource.action.first)
+          if current_revision = find_current_revision
+            @current_resource.revision current_revision
+          end
         end
       end
       
       def action_checkout
         run_command(run_options(:command => checkout_command))
-        @new_resource.updated = true
+        @new_resource.updated_by_last_action(true)
       end
       
       def action_export
         run_command(run_options(:command => export_command))
-        @new_resource.updated = true
+        @new_resource.updated_by_last_action(true)
       end
       
       def action_force_export
-        run_command(run_options(:command => export_command(:force => true)))
-        @new_resource.updated = true
+        run_command(run_options(:command => export_command))
+        @new_resource.updated_by_last_action(true)
       end
       
       def action_sync
@@ -56,7 +59,7 @@ class Chef
         else
           run_command(run_options(:command => sync_command))
         end
-        @new_resource.updated = true
+        @new_resource.updated_by_last_action(true)
       end
       
       def sync_command
@@ -70,9 +73,9 @@ class Chef
             "-r#{revision_int}", @new_resource.repository, @new_resource.destination
       end
       
-      def export_command(opts={})
+      def export_command
         Chef::Log.info "exporting #{@new_resource.repository} at revision #{@new_resource.revision} to #{@new_resource.destination}"
-        args = opts[:force] ? ["--force"] : []
+        args = ["--force"]
         args << @new_resource.svn_arguments << verbose << authentication <<
             "-r#{revision_int}" << @new_resource.repository << @new_resource.destination
         scm :export, *args
@@ -86,7 +89,7 @@ class Chef
           if @new_resource.revision =~ /^\d+$/
             @new_resource.revision
           else
-            command = scm(:info, @new_resource.repository, authentication, "-r#{@new_resource.revision}")
+            command = scm(:info, @new_resource.repository, @new_resource.svn_info_args, authentication, "-r#{@new_resource.revision}")
             status, svn_info, error_message = output_of_command(command, run_options)
             handle_command_failures(status, "STDOUT: #{svn_info}\nSTDERR: #{error_message}")
             extract_revision_info(svn_info)

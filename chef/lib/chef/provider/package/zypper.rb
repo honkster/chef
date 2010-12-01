@@ -32,8 +32,9 @@ class Chef
           @current_resource.package_name(@new_resource.package_name)
 
           is_installed=false
-          version=''
           is_out_of_date=false
+          version=''
+          oud_version=''
           Chef::Log.debug("Checking zypper for #{@new_resource.package_name}")
           status = popen4("zypper info #{@new_resource.package_name}") do |pid, stdin, stdout, stderr|
             stdout.each do |line|
@@ -99,11 +100,11 @@ class Chef
         def upgrade_package(name, version)
           if version
             run_command(
-              :command => "zypper -n --no-gpg-checks update -l  #{name}=#{version}"
+              :command => "zypper -n --no-gpg-checks install -l #{name}=#{version}"
             )
           else
             run_command(
-              :command => "zypper -n --no-gpg-checks update -l  #{name}"
+              :command => "zypper -n --no-gpg-checks install -l #{name}"
             )
           end
         end

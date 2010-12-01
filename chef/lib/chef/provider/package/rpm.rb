@@ -45,7 +45,7 @@ class Chef
               end
             end
           else
-            if @new_resource.action.include?(:install)
+            if Array(@new_resource.action).include?(:install)
               raise Chef::Exceptions::Package, "Source for package #{@new_resource.name} required for action install"
             end
           end
@@ -71,11 +71,11 @@ class Chef
         def install_package(name, version)
           unless @current_resource.version
             run_command_with_systems_locale(
-              :command => "rpm -i #{@new_resource.source}"
+              :command => "rpm #{@new_resource.options} -i #{@new_resource.source}"
             )
           else
             run_command_with_systems_locale(
-              :command => "rpm -U #{@new_resource.source}"
+              :command => "rpm #{@new_resource.options} -U #{@new_resource.source}"
             )
           end
         end
@@ -85,11 +85,11 @@ class Chef
         def remove_package(name, version)
           if version
             run_command_with_systems_locale(
-              :command => "rpm -e #{name}-#{version}"
+              :command => "rpm #{@new_resource.options} -e #{name}-#{version}"
             )
           else
             run_command_with_systems_locale(
-              :command => "rpm -e #{name}"
+              :command => "rpm #{@new_resource.options} -e #{name}"
             )
           end
         end

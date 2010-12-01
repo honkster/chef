@@ -28,10 +28,6 @@ describe Chef::Config do
       Chef::Config.registration_url.should == "https://junglist.gen.nz" 
     end
 
-    it "should set the openid url" do
-      Chef::Config.openid_url.should == "https://junglist.gen.nz" 
-    end
-
     it "should set the template url" do
       Chef::Config.template_url.should == "https://junglist.gen.nz" 
     end
@@ -111,8 +107,8 @@ describe Chef::Config do
   end
 
   describe "default values" do
-    it "Chef::Config[:file_backup_path] defaults to nil" do
-      Chef::Config[:file_backup_path].should be_nil
+    it "Chef::Config[:file_backup_path] defaults to /var/chef/backup" do
+      Chef::Config[:file_backup_path].should == "/var/chef/backup"
     end
 
     it "Chef::Config[:ssl_verify_mode] defaults to :verify_none" do

@@ -18,6 +18,13 @@
 require File.expand_path(File.join(File.dirname(__FILE__), "..", "spec_helper"))
 
 describe Chef::Daemon do  
+  before do
+    @original_config = Chef::Config.configuration
+  end
+
+  after do
+    Chef::Config.configuration.replace(@original_config)
+  end
   
   describe ".running?" do
     
@@ -56,9 +63,13 @@ describe Chef::Daemon do
     describe "when the pid_file option has been set" do
       
       before do
-        Chef::Config.stub!(:[]).with(:pid_file).and_return("/var/run/chef/chef-client.pid")
+        Chef::Config[:pid_file] = "/var/run/chef/chef-client.pid"
       end
-      
+
+      after do
+        Chef::Config.configuration.replace(@original_config)
+      end
+
       it "should return the supplied value" do
         Chef::Daemon.pid_file.should eql("/var/run/chef/chef-client.pid")
       end
@@ -67,7 +78,7 @@ describe Chef::Daemon do
     describe "without the pid_file option set" do
       
       before do
-        Chef::Config.stub!(:[]).with(:pid_file).and_return(nil)
+        Chef::Config[:pid_file] = nil
         Chef::Daemon.name = "chef-client"
       end
       
@@ -81,7 +92,7 @@ describe Chef::Daemon do
   describe ".pid_from_file" do
     
     before do
-      Chef::Config.stub!(:[]).with(:pid_file).and_return("/var/run/chef/chef-client.pid")
+      Chef::Config[:pid_file] = "/var/run/chef/chef-client.pid"
     end
     
     it "should suck the pid out of pid_file" do
@@ -94,7 +105,7 @@ describe Chef::Daemon do
     
     before do
       Process.stub!(:pid).and_return(1337)
-      Chef::Config.stub!(:[]).with(:pid_file).and_return("/var/run/chef/chef-client.pid")
+      Chef::Config[:pid_file] = "/var/run/chef/chef-client.pid"
       Chef::Application.stub!(:fatal!).and_return(true)
       @f_mock = mock(File, { :print => true, :close => true, :write => true })
       File.stub!(:open).with("/var/run/chef/chef-client.pid", "w").and_yield(@f_mock)
@@ -111,7 +122,7 @@ describe Chef::Daemon do
     end
     
     it "should write the pid, converted to string, to the pid file" do
-      @f_mock.should_receive(:write, "1337").once.and_return(true)
+      @f_mock.should_receive(:write).with("1337").once.and_return(true)
       Chef::Daemon.save_pid_file
     end
     
@@ -119,7 +130,7 @@ describe Chef::Daemon do
   
   describe ".remove_pid_file" do
     before do
-      Chef::Config.stub!(:[]).with(:pid_file).and_return("/var/run/chef/chef-client.pid")
+      Chef::Config[:pid_file] = "/var/run/chef/chef-client.pid"
     end
     
     describe "when the pid file exists" do
@@ -154,17 +165,24 @@ describe Chef::Daemon do
     
     before do
       Chef::Application.stub!(:fatal!).and_return(true)
-      Chef::Config.stub!(:[]).with(:user).and_return("aj")
+      Chef::Config[:user] = 'aj'
+      Dir.stub!(:chdir)
     end
-    
+
+    it "changes the working directory to root" do
+      Dir.rspec_reset
+      Dir.should_receive(:chdir).with("/").and_return(0)
+      Chef::Daemon.change_privilege
+    end
+
     describe "when the user and group options are supplied" do
       
       before do
-        Chef::Config.stub!(:[]).with(:group).and_return("staff")
+        Chef::Config[:group] = 'staff'
       end
       
       it "should log an appropriate info message" do
-        Chef::Log.should_receive(:info, "About to change privilege to aj:staff")
+        Chef::Log.should_receive(:info).with("About to change privilege to aj:staff")
         Chef::Daemon.change_privilege
       end
       
@@ -176,11 +194,11 @@ describe Chef::Daemon do
     
     describe "when just the user option is supplied" do
       before do
-        Chef::Config.stub!(:[]).with(:group).and_return(nil)
+        Chef::Config[:group] = nil
       end
             
       it "should log an appropriate info message" do
-        Chef::Log.should_receive(:info, "About to change privilege to aj")
+        Chef::Log.should_receive(:info).with("About to change privilege to aj")
         Chef::Daemon.change_privilege
       end
       
@@ -236,14 +254,17 @@ describe Chef::Daemon do
         Process.stub!(:euid).and_return(999)
         Process.stub!(:egid).and_return(999)
       end
-      
+
       it "should log an appropriate error message and fail miserably" do
         Process.stub!(:initgroups).and_raise(Errno::EPERM)
-        Chef::Application.should_receive(:fatal!).with("Permission denied when trying to change 999:999 to 501:20. Operation not permitted")
+        error = "Operation not permitted"
+        if RUBY_PLATFORM.match("solaris2")
+          error = "Not owner"
+        end
+        Chef::Application.should_receive(:fatal!).with("Permission denied when trying to change 999:999 to 501:20. #{error}")
         Chef::Daemon._change_privilege("aj")
       end
     end
 
   end  
-
 end

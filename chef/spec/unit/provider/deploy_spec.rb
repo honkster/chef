@@ -26,11 +26,10 @@ describe Chef::Provider::Deploy do
     @expected_release_dir = "/my/deploy/dir/releases/20040815162342"
     @resource = Chef::Resource::Deploy.new("/my/deploy/dir")
     @node = Chef::Node.new
-    @provider = Chef::Provider::Deploy.new(@node, @resource)
+    @run_context = Chef::RunContext.new(@node, {})
+    @provider = Chef::Provider::Deploy.new(@resource, @run_context)
     @provider.stub!(:release_slug)
     @provider.stub!(:release_path).and_return(@expected_release_dir)
-    @runner = mock("runnah", :null_object => true)
-    Chef::Runner.stub!(:new).and_return(@runner)
   end
   
   it "supports :deploy and :rollback actions" do
@@ -151,8 +150,10 @@ describe Chef::Provider::Deploy do
   end
   
   it "runs the new resource collection in the runner during a callback" do
+    @runner = mock("Runner")
+    Chef::Runner.stub!(:new).and_return(@runner)
     @runner.should_receive(:converge)
-    callback_code = lambda { :noop }
+    callback_code = Proc.new { :noop }
     @provider.callback(:whatevs, callback_code)
   end
   
@@ -336,7 +337,7 @@ describe Chef::Provider::Deploy do
   it "sets @configuration[:environment] to the value of RAILS_ENV for backwards compat reasons" do
     resource = Chef::Resource::Deploy.new("/my/deploy/dir")
     resource.environment "production" 
-    provider = Chef::Provider::Deploy.new(@node, resource)
+    provider = Chef::Provider::Deploy.new(resource, @run_context)
     provider.instance_variable_get(:@configuration)[:environment].should eql("production")
   end
   
@@ -350,9 +351,11 @@ describe Chef::Provider::Deploy do
   context "using inline recipes for callbacks" do
     
     it "runs an inline recipe with the provided block for :callback_name == {:recipe => &block} " do
-      recipe_code = lambda {:noop}
-      @provider.should_receive(:instance_eval).with(&recipe_code)
+      snitch = nil
+      recipe_code = Proc.new {snitch = 42}
+      #@provider.should_receive(:instance_eval).with(&recipe_code)
       @provider.callback(:whateverz, recipe_code)
+      snitch.should == 42
     end
     
     it "loads a recipe file from the specified path and from_file evals it" do
@@ -364,7 +367,7 @@ describe Chef::Provider::Deploy do
     
     it "instance_evals a block/proc for restart command" do
       snitch = nil
-      restart_cmd = lambda {snitch = 42}
+      restart_cmd = Proc.new {snitch = 42}
       @resource.restart(&restart_cmd)
       @provider.restart
       snitch.should == 42
@@ -378,11 +381,41 @@ describe Chef::Provider::Deploy do
       @provider.sudo("the moon, fool")
     end
 
-    it "defines run as a forwarder to execute, setting the user to new_resource.user" do
+    it "defines run as a forwarder to execute, setting the user, group, cwd and environment to new_resource.user" do
+      mock_execution = mock("Resource::Execute")
+      @provider.should_receive(:execute).with("iGoToHell4this").and_return(mock_execution)
+      @resource.user("notCoolMan")
+      @resource.group("Ggroup")
+      @resource.environment("APP_ENV" => 'staging')
+      @resource.deploy_to("/my/app")
+      mock_execution.should_receive(:user).with("notCoolMan")
+      mock_execution.should_receive(:group).with("Ggroup")
+      mock_execution.should_receive(:cwd){|*args|
+        if args.empty?
+          nil 
+        else 
+          args.size.should == 1
+          args.first.should == @provider.release_path
+        end
+      }.twice
+      mock_execution.should_receive(:environment){ |*args|
+        if args.empty? 
+          nil 
+        else 
+          args.size.should == 1
+          args.first.should == {"APP_ENV" => "staging"}
+        end
+      }.twice
+      @provider.run("iGoToHell4this")
+    end
+
+    it "defines run as a forwarder to execute, setting cwd and environment but not override" do
       mock_execution = mock("Resource::Execute")
       @provider.should_receive(:execute).with("iGoToHell4this").and_return(mock_execution)
       @resource.user("notCoolMan")
       mock_execution.should_receive(:user).with("notCoolMan")
+      mock_execution.should_receive(:cwd).with(no_args()).and_return("/some/value")
+      mock_execution.should_receive(:environment).with(no_args()).and_return({})
       @provider.run("iGoToHell4this")
     end
 
@@ -393,9 +426,9 @@ describe Chef::Provider::Deploy do
       snitch = nil
       @resource.user("tehCat")
       
-      callback_code = lambda do
+      callback_code = Proc.new do
         snitch = 42
-        temp_collection = self.instance_variable_get(:@collection)
+        temp_collection = self.resource_collection
         run("tehMice")
         snitch = temp_collection.lookup("execute[tehMice]")
       end
@@ -427,11 +460,11 @@ describe Chef::Provider::Deploy do
     it "takes a list of gem providers converges them" do
       IO.stub!(:read)
       YAML.stub!(:load).and_return(@gem_list)
-      gem_resources = @provider.send(:gem_packages)
-      run4r = mock("Chef::Runner")
-      Chef::Runner.should_receive(:new).with(@node, an_instance_of(Chef::ResourceCollection)).and_return(run4r)
-      run4r.should_receive(:converge)
-      @provider.send(:install_gems)
+      expected_gem_resources = @provider.send(:gem_packages).map { |r| [r.name, r.version] }
+      gem_runner = @provider.send(:gem_resource_collection_runner)
+      # no one has heard of defining == to be meaningful so I have use this monstrosity
+      actual = gem_runner.run_context.resource_collection.all_resources.map { |r| [r.name, r.version] }
+      actual.should == expected_gem_resources
     end
     
   end

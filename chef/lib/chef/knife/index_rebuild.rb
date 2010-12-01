@@ -23,7 +23,7 @@ class Chef
   class Knife
     class IndexRebuild < Knife
       
-      banner "Sub-Command: index rebuild (options)"
+      banner "knife index rebuild (options)"
       option :yes,
         :short        => "-y",
         :long         => "--yes",
@@ -32,7 +32,7 @@ class Chef
         
       def run
         nag
-        json_pretty_print rest.post_rest("/search/reindex", {})
+        output rest.post_rest("/search/reindex", {})
       end
       
       def nag

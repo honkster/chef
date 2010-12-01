@@ -20,12 +20,13 @@ require File.expand_path(File.join(File.dirname(__FILE__), "..", "..", "spec_hel
 
 describe Chef::Knife::RoleBulkDelete do
   before(:each) do
+    Chef::Config[:node_name]  = "webmonkey.example.com"
     @knife = Chef::Knife::RoleBulkDelete.new
     @knife.config = {
       :print_after => nil
     }
     @knife.name_args = ["."]
-    @knife.stub!(:json_pretty_print).and_return(:true)
+    @knife.stub!(:output).and_return(:true)
     @knife.stub!(:confirm).and_return(true)
     @roles = Hash.new
     %w{dev staging production}.each do |role_name|
@@ -45,7 +46,7 @@ describe Chef::Knife::RoleBulkDelete do
     end
     
     it "should print the roles you are about to delete" do
-      @knife.should_receive(:json_pretty_print).with(@knife.format_list_for_display(@roles))
+      @knife.should_receive(:output).with(@knife.format_list_for_display(@roles))
       @knife.run
     end
     
@@ -78,7 +79,7 @@ describe Chef::Knife::RoleBulkDelete do
       it "should pretty_print the roles, formatted for display" do
         @knife.config[:print_after] = true
         @roles.each_value do |n|
-          @knife.should_receive(:json_pretty_print).with(@knife.format_for_display(n))
+          @knife.should_receive(:output).with(@knife.format_for_display(n))
         end
         @knife.run
       end

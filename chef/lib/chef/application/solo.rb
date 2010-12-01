@@ -15,6 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+require 'chef'
 require 'chef/application'
 require 'chef/client'
 require 'chef/config'
@@ -95,12 +96,6 @@ class Chef::Application::Solo < Chef::Application
     :description => "The splay time for running at intervals, in seconds",
     :proc => lambda { |s| s.to_i }
 
-  option :json_attribs,
-    :short => "-j JSON_ATTRIBS",
-    :long => "--json-attributes JSON_ATTRIBS",
-    :description => "Load attributes from a JSON file or URL",
-    :proc => nil
-  
   option :recipe_url,
       :short => "-r RECIPE_URL",
       :long => "--recipe-url RECIPE_URL",
@@ -124,7 +119,7 @@ class Chef::Application::Solo < Chef::Application
   def reconfigure
     super
     
-    Chef::Config.solo true
+    Chef::Config[:solo] = true
 
     if Chef::Config[:daemonize]
       Chef::Config[:interval] ||= 1800
@@ -158,7 +153,7 @@ class Chef::Application::Solo < Chef::Application
     end
     
     if Chef::Config[:recipe_url]
-      cookbooks_path = Chef::Config[:cookbook_path].detect{|e| e =~ /\/cookbooks\/*$/ }
+      cookbooks_path = Array(Chef::Config[:cookbook_path]).detect{|e| e =~ /\/cookbooks\/*$/ }
       recipes_path = File.expand_path(File.join(cookbooks_path, '..'))
       target_file = File.join(recipes_path, 'recipes.tgz')
 
@@ -176,10 +171,6 @@ class Chef::Application::Solo < Chef::Application
   
   def setup_application
     Chef::Daemon.change_privilege
-    
-    @chef_solo = Chef::Client.new
-    @chef_solo.json_attribs = @chef_solo_json
-    @chef_solo.node_name = Chef::Config[:node_name]
   end
   
   def run_application
@@ -195,8 +186,9 @@ class Chef::Application::Solo < Chef::Application
           sleep splay
         end
 
-        @chef_solo.run_solo
-        
+        @chef_solo = Chef::Client.new(@chef_solo_json)
+        @chef_solo.run
+        @chef_solo = nil
         if Chef::Config[:interval]
           Chef::Log.debug("Sleeping for #{Chef::Config[:interval]} seconds")
           sleep Chef::Config[:interval]
@@ -215,6 +207,8 @@ class Chef::Application::Solo < Chef::Application
         else
           raise
         end
+      ensure
+        GC.start
       end
     end
   end

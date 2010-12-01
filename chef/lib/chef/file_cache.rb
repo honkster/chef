@@ -6,9 +6,9 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -26,12 +26,12 @@ class Chef
     class << self
       include Chef::Mixin::ParamsValidate
       include Chef::Mixin::CreatePath
-      
+
       # Write a file to the File Cache.
       #
       # === Parameters
       # path<String>:: The path to the file you want to put in the cache - should
-      #   be relative to Chef::Config[:file_cache_path]
+      #   be relative to file_cache_path
       # contents<String>:: A string with the contents you want written to the file
       #
       # === Returns
@@ -47,19 +47,19 @@ class Chef
             :contents => { :kind_of => String },
           }
         )
-      
+
         file_path_array = File.split(path)
         file_name = file_path_array.pop
         cache_path = create_cache_path(File.join(file_path_array))
-        io = File.open(File.join(cache_path, file_name), "w")
-        io.print(contents)
-        io.close
+        File.open(File.join(cache_path, file_name), "w") do |io|
+          io.print(contents)
+        end
         true
       end
-      
-      # Move a file in to the cache.  Useful with the REST raw file output.
+
+      # Move a file into the cache.  Useful with the REST raw file output.
       #
-      # === Parameteres
+      # === Parameters
       # file<String>:: The path to the file you want in the cache
       # path<String>:: The relative name you want the new file to use
       def move_to(file, path)
@@ -73,24 +73,24 @@ class Chef
             :path => { :kind_of => String },
           }
         )
-        
+
         file_path_array = File.split(path)
         file_name = file_path_array.pop
         if File.exists?(file) && File.writable?(file)
           FileUtils.mv(
-            file, 
+            file,
             File.join(create_cache_path(File.join(file_path_array), true), file_name)
           )
         else
           raise RuntimeError, "Cannot move #{file} to #{path}!"
         end
       end
-    
+
       # Read a file from the File Cache
       #
       # === Parameters
       # path<String>:: The path to the file you want to load - should
-      #   be relative to Chef::Config[:file_cache_path]
+      #   be relative to file_cache_path
       # read<True/False>:: Whether to return the file contents, or the path.
       #   Defaults to true.
       #
@@ -116,12 +116,12 @@ class Chef
           cache_path
         end
       end
-      
+
       # Delete a file from the File Cache
       #
       # === Parameters
       # path<String>:: The path to the file you want to delete - should
-      #   be relative to Chef::Config[:file_cache_path]
+      #   be relative to file_cache_path
       #
       # === Returns
       # true
@@ -140,28 +140,35 @@ class Chef
         end
         true
       end
-      
+
       # List all the files in the Cache
       #
       # === Returns
       # Array:: An array of files in the cache, suitable for use with load, delete and store
-      def list()
+      def list
+        find("**#{File::Separator}*")
+      end
+
+      ##
+      # Find files in the cache by +glob_pattern+
+      # === Returns
+      # [String] - An array of file cache keys matching the glob
+      def find(glob_pattern)
         keys = Array.new
-        Dir[File.join(Chef::Config[:file_cache_path], '**', '*')].each do |f|
+        Dir[File.join(file_cache_path, glob_pattern)].each do |f|
           if File.file?(f)
-            path = f.match("^#{Chef::Config[:file_cache_path]}\/(.+)")[1]
-            keys << path
+            keys << f[/^#{Regexp.escape(Dir[file_cache_path].first) + File::Separator}(.+)/, 1]
           end
         end
         keys
       end
-      
+
       # Whether or not this file exists in the Cache
       #
       # === Parameters
-      # path:: The path to the file you want to check - is relative 
-      #   to Chef::Config[:file_cache_path]
-      # 
+      # path:: The path to the file you want to check - is relative
+      #   to file_cache_path
+      #
       # === Returns
       # True:: If the file exists
       # False:: If it does not
@@ -181,25 +188,31 @@ class Chef
           false
         end
       end
-      
+
       # Create a full path to a given file in the cache. By default,
       # also creates the path if it does not exist.
       #
       # === Parameters
-      # path:: The path to create, relative to Chef::Config[:file_cache_path]
+      # path:: The path to create, relative to file_cache_path
       # create_if_missing:: True by default - whether to create the path if it does not exist
-      # 
+      #
       # === Returns
       # String:: The fully expanded path
       def create_cache_path(path, create_if_missing=true)
-        cache_dir = File.expand_path(File.join(Chef::Config[:file_cache_path], path))
+        cache_dir = File.expand_path(File.join(file_cache_path, path))
         if create_if_missing
-          create_path(cache_dir) 
+          create_path(cache_dir)
         else
           cache_dir
         end
       end
-  
+
+      private
+
+      def file_cache_path
+        Chef::Config[:file_cache_path]
+      end
+
     end
   end
 end

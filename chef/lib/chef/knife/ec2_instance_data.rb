@@ -23,7 +23,7 @@ class Chef
   class Knife
     class Ec2InstanceData < Knife
 
-      banner "Sub-Command: ec2 instance data [RUN LIST...] (options)"
+      banner "knife ec2 instance data [RUN LIST...] (options)"
 
       option :edit,
         :short => "-e",
@@ -38,7 +38,7 @@ class Chef
           "attributes" => { "run_list" => @name_args } 
         }
         data = edit_data(data) if config[:edit]
-        json_pretty_print(data)
+        output(data)
       end
     end
   end

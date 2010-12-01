@@ -23,8 +23,10 @@ describe Chef::Provider::Breakpoint do
   before do
     @resource = Chef::Resource::Breakpoint.new
     @node = Chef::Node.new
+    @run_context = Chef::RunContext.new(@node, {})
     @collection = mock("resource collection")
-    @provider = Chef::Provider::Breakpoint.new(@node,@resource, @collection)
+    @run_context.stub!(:resource_collection).and_return(@collection)
+    @provider = Chef::Provider::Breakpoint.new(@resource, @run_context)
   end
   
   it "responds to load_current_resource" do
@@ -37,7 +39,7 @@ describe Chef::Provider::Breakpoint do
     @collection.stub!(:iterator).and_return(@iterator)
     @iterator.should_receive(:pause)
     @provider.action_break
-    @resource.updated.should == true
+    @resource.should be_updated
   end
 
   it "doesn't pause the iterator if Shef isn't running" do
